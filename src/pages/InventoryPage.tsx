@@ -11,7 +11,7 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState({ name: '', price: '', stock: '', category: 'General' });
+  const [formData, setFormData] = useState({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18', barcode: '' });
 
   useEffect(() => {
     fetchProducts();
@@ -31,7 +31,12 @@ export default function InventoryPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...formData, price: Number(formData.price), stock: Number(formData.stock) };
+      const payload = { 
+        ...formData, 
+        price: Number(formData.price), 
+        stock: Number(formData.stock),
+        gstRate: Number(formData.gstRate)
+      };
       if (editingProduct) {
         await api.put(`/inventory/product/${editingProduct.id}`, payload);
       } else {
@@ -39,7 +44,7 @@ export default function InventoryPage() {
       }
       setIsModalOpen(false);
       setEditingProduct(null);
-      setFormData({ name: '', price: '', stock: '', category: 'General' });
+      setFormData({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18', barcode: '' });
       fetchProducts();
     } catch (err) {
       alert('Failed to save product');
@@ -66,7 +71,7 @@ export default function InventoryPage() {
           <p className="text-slate-500 text-sm font-medium">Manage your retail items and availability</p>
         </div>
         <button
-          onClick={() => { setEditingProduct(null); setFormData({ name: '', price: '', stock: '', category: 'General' }); setIsModalOpen(true); }}
+          onClick={() => { setEditingProduct(null); setFormData({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18' }); setIsModalOpen(true); }}
           className="btn-primary flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -91,6 +96,9 @@ export default function InventoryPage() {
             <thead>
               <tr className="bg-slate-50/50">
                 <th className="label-micro data-cell text-left">Product Detail</th>
+                <th className="label-micro data-cell text-left">Barcode</th>
+                <th className="label-micro data-cell text-left">HSN</th>
+                <th className="label-micro data-cell text-left">GST%</th>
                 <th className="label-micro data-cell text-left">Category</th>
                 <th className="label-micro data-cell text-left">Unit Price</th>
                 <th className="label-micro data-cell text-left">Availability</th>
@@ -106,6 +114,9 @@ export default function InventoryPage() {
                 filtered.map(p => (
                   <tr key={p.id} className="data-row">
                     <td className="data-cell font-bold text-slate-800">{p.name}</td>
+                    <td className="data-cell text-[10px] font-black text-slate-400 font-mono italic">{p.barcode || '-'}</td>
+                    <td className="data-cell text-[10px] font-black text-slate-400 font-mono italic">{p.hsnCode || '-'}</td>
+                    <td className="data-cell text-xs font-bold text-slate-600">{p.gstRate}%</td>
                     <td className="data-cell text-slate-500 font-medium">{p.category}</td>
                     <td className="data-cell font-mono text-sm font-bold">{formatCurrency(p.price)}</td>
                     <td className="data-cell font-mono text-sm">
@@ -116,7 +127,7 @@ export default function InventoryPage() {
                     <td className="data-cell text-right">
                       <div className="flex items-center justify-end gap-3">
                         <button 
-                          onClick={() => { setEditingProduct(p); setFormData({ name: p.name, price: String(p.price), stock: String(p.stock), category: p.category }); setIsModalOpen(true); }}
+                          onClick={() => { setEditingProduct(p); setFormData({ name: p.name, price: String(p.price), stock: String(p.stock), category: p.category, hsnCode: p.hsnCode || '', gstRate: String(p.gstRate || 0), barcode: p.barcode || '' }); setIsModalOpen(true); }}
                           className="p-2 border border-slate-100 bg-white shadow-sm hover:bg-slate-50 rounded-xl text-slate-600 transition-all active:scale-90"
                         >
                           <Edit2 className="w-4 h-4" />
@@ -155,21 +166,37 @@ export default function InventoryPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="label-micro block mb-1">Product Name</label>
-                  <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                  <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input-base w-full" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="label-micro block mb-1">Price (₹)</label>
-                    <input type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                    <input type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="input-base w-full" />
                   </div>
                   <div>
                     <label className="label-micro block mb-1">Stock</label>
-                    <input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                    <input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="input-base w-full" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label-micro block mb-1">HSN Code</label>
+                    <input value={formData.hsnCode} onChange={e => setFormData({...formData, hsnCode: e.target.value})} className="input-base w-full" placeholder="e.g. 0901" />
+                  </div>
+                  <div>
+                    <label className="label-micro block mb-1">GST Rate (%)</label>
+                    <select value={formData.gstRate} onChange={e => setFormData({...formData, gstRate: e.target.value})} className="input-base w-full">
+                      {[0, 5, 12, 18, 28].map(rate => <option key={rate} value={rate}>{rate}%</option>)}
+                    </select>
                   </div>
                 </div>
                 <div>
+                  <label className="label-micro block mb-1">Barcode (EAN/UPC)</label>
+                  <input value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="input-base w-full" placeholder="Scan or type barcode..." />
+                </div>
+                <div>
                   <label className="label-micro block mb-1">Category</label>
-                  <input value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                  <input value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="input-base w-full" />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg font-medium hover:bg-gray-50 transition-colors">Cancel</button>

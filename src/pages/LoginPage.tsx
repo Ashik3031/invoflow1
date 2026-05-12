@@ -18,7 +18,7 @@ export default function LoginPage() {
     setError('');
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      setAuth(data.user, data.token);
+      setAuth(data.user, data.token, data.tenant);
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed');

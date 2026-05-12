@@ -1,21 +1,33 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Trash2, ShoppingCart, User, Loader2, CheckCircle2, MessageSquare, Ticket, Gift, Sparkles, TrendingUp } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, User, Loader2, CheckCircle2, MessageSquare, Ticket, Gift, Sparkles, TrendingUp, Building, MapPin, FileBox } from 'lucide-react';
 import api from '../lib/api';
-import { Product, Customer, LoyaltyConfig, Coupon } from '../types';
+import { Product, Customer, LoyaltyConfig, Coupon, Bill } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", 
+  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", 
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", 
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
+];
 
 export default function BillingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
-  const [customer, setCustomer] = useState({ name: '', phone: '' });
+  const [customer, setCustomer] = useState({ name: '', phone: '', gstin: '', state: 'Karnataka' });
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig | null>(null);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [tenant, setTenant] = useState<any>(null);
+  
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid');
+  const [documentType, setDocumentType] = useState<'invoice' | 'estimate' | 'credit_note' | 'challan'>('invoice');
+  const [isB2B, setIsB2B] = useState(false);
+  
   const [loading, setLoading] = useState(false);
   const [successBill, setSuccessBill] = useState<any>(null);
 
@@ -25,14 +37,17 @@ export default function BillingPage() {
 
   const fetchData = async () => {
     try {
-      const [pRes, lRes, cRes] = await Promise.all([
+      const [pRes, lRes, cRes, tRes] = await Promise.all([
         api.get('/inventory/products'),
         api.get('/marketing/loyalty/config'),
-        api.get('/marketing/coupons')
+        api.get('/marketing/coupons'),
+        api.get('/settings/tenant')
       ]);
       setProducts(pRes.data);
       setLoyaltyConfig(lRes.data);
       setCoupons(cRes.data);
+      setTenant(tRes.data);
+      if (tRes.data?.state) setCustomer(prev => ({ ...prev, state: tRes.data.state }));
     } catch (err) {
       console.error(err);
     }
@@ -45,7 +60,7 @@ export default function BillingPage() {
       const found = dbRes.data.find((c: Customer) => c.phone === val);
       if (found) {
         setActiveCustomer(found);
-        setCustomer({ name: found.name, phone: found.phone });
+        setCustomer(prev => ({ ...prev, name: found.name }));
       } else {
         setActiveCustomer(null);
       }
@@ -57,10 +72,9 @@ export default function BillingPage() {
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.product.id === product.id);
     if (existing) {
-      if (existing.quantity >= product.stock) return;
+      if (existing.quantity >= product.stock && documentType === 'invoice') return;
       setCart(cart.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
     } else {
-      if (product.stock < 1) return;
       setCart([...cart, { product, quantity: 1 }]);
     }
   };
@@ -70,7 +84,7 @@ export default function BillingPage() {
       if (item.product.id === id) {
         const newQty = item.quantity + delta;
         if (newQty < 1) return item;
-        if (newQty > item.product.stock) return item;
+        if (newQty > item.product.stock && documentType === 'invoice') return item;
         return { ...item, quantity: newQty };
       }
       return item;
@@ -81,7 +95,24 @@ export default function BillingPage() {
     setCart(cart.filter(item => item.product.id !== id));
   };
 
-  const subtotal = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+  // GST Calculation Logic
+  const isInterState = tenant?.state && customer.state !== tenant.state;
+  
+  let subtotal = 0;
+  let totalGst = 0;
+  
+  const processedItems = cart.map(item => {
+    const base = item.product.price * item.quantity;
+    const gstRate = item.product.gstRate || 0;
+    const gstAmt = base * (gstRate / 100);
+    subtotal += base;
+    totalGst += gstAmt;
+    return { ...item, base, gstAmt };
+  });
+
+  const cgst = isInterState ? 0 : totalGst / 2;
+  const sgst = isInterState ? 0 : totalGst / 2;
+  const igst = isInterState ? totalGst : 0;
   
   let discountAmount = 0;
   if (selectedCoupon) {
@@ -93,7 +124,7 @@ export default function BillingPage() {
   }
 
   const pointValue = redeemPoints * (loyaltyConfig?.valuePerPoint || 0);
-  const grandTotal = Math.max(0, subtotal - discountAmount - pointValue);
+  const grandTotal = Math.max(0, subtotal + totalGst - discountAmount - pointValue);
 
   const handleSubmit = async () => {
     if (cart.length === 0) return;
@@ -102,6 +133,8 @@ export default function BillingPage() {
       const payload = {
         customerName: customer.name,
         customerPhone: customer.phone,
+        customerGstin: isB2B ? customer.gstin : undefined,
+        customerState: customer.state,
         items: cart.map(item => ({
           productId: item.product.id,
           quantity: item.quantity,
@@ -109,15 +142,17 @@ export default function BillingPage() {
         })),
         paymentStatus,
         discountAmount,
-        pointsRedeemed: redeemPoints
+        pointsRedeemed: redeemPoints,
+        documentType
       };
       const { data } = await api.post('/billing/create', payload);
       setSuccessBill(data);
       setCart([]);
-      setCustomer({ name: '', phone: '' });
+      setCustomer({ name: '', phone: '', gstin: '', state: tenant?.state || 'Karnataka' });
       setActiveCustomer(null);
       setSelectedCoupon(null);
       setRedeemPoints(0);
+      setIsB2B(false);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Billing failed');
     } finally {
@@ -127,7 +162,7 @@ export default function BillingPage() {
 
   const generateWhatsAppLink = () => {
     if (!successBill) return '';
-    const message = `Hi ${customer.name || 'Customer'}, your bill from Xyraco Lite is ${formatCurrency(successBill.totalAmount)}. Points Earned: ${Math.floor(successBill.totalAmount * (loyaltyConfig?.pointsPerRupee || 0))}. Thank you!`;
+    const message = `Hi ${customer.name || 'Customer'}, your bill ${successBill.billNumber} for ${formatCurrency(successBill.totalAmount)} is ready. Thank you!`;
     const phone = customer.phone.replace(/\D/g, '');
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
@@ -142,13 +177,16 @@ export default function BillingPage() {
   if (successBill) {
     return (
       <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center space-y-6">
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
           <CheckCircle2 className="w-10 h-10" />
         </motion.div>
         <div>
-          <h2 className="text-2xl font-bold">Transaction Complete</h2>
-          <p className="text-gray-500 mt-2">Bill No: {successBill.billNumber}</p>
-          <p className="text-4xl font-black mt-4 text-slate-800">{formatCurrency(successBill.totalAmount)}</p>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight uppercase">Order Confirmed</h2>
+          <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">{successBill.documentType} #{successBill.billNumber}</p>
+          <div className="mt-8 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Final Amount</p>
+            <p className="text-5xl font-black text-slate-900 tracking-tighter">{formatCurrency(successBill.totalAmount)}</p>
+          </div>
         </div>
         
         {customer.phone && (
@@ -156,18 +194,18 @@ export default function BillingPage() {
             href={generateWhatsAppLink()}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-all active:scale-95"
+            className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all active:scale-95 shadow-xl shadow-slate-200"
           >
             <MessageSquare className="w-5 h-5" />
-            WhatsApp Invoice
+            Send WhatsApp Invoice
           </a>
         )}
         
         <button
           onClick={() => setSuccessBill(null)}
-          className="w-full py-4 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+          className="w-full py-5 border-2 border-slate-100 rounded-2xl font-black uppercase tracking-widest text-xs text-slate-400 hover:bg-slate-50 transition-colors"
         >
-          New Transaction
+          Close & New Entry
         </button>
       </div>
     );
@@ -177,19 +215,48 @@ export default function BillingPage() {
     <div className="flex flex-col lg:flex-row h-full gap-8">
       {/* Left Selection */}
       <div className="flex-[1.8] flex flex-col gap-6 overflow-hidden">
+        {/* Document Type & B2B Switch */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-2xl">
+            {['invoice', 'estimate', 'credit_note', 'challan'].map((type) => (
+              <button
+                key={type}
+                onClick={() => setDocumentType(type as any)}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                  documentType === type ? "bg-white text-brand shadow-sm" : "text-slate-400 hover:text-slate-600"
+                )}
+              >
+                {type.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+
+          <button 
+            onClick={() => setIsB2B(!isB2B)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl border-2 transition-all",
+              isB2B ? "bg-indigo-50 border-brand text-brand" : "bg-white border-slate-100 text-slate-400"
+            )}
+          >
+            <Building className="w-4 h-4" />
+            <span className="text-[10px] font-black uppercase tracking-widest">B2B Mode</span>
+          </button>
+        </div>
+
         <div className="glass-card flex-1 flex flex-col overflow-hidden">
           <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
             <h2 className="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4" /> Products
+              <ShoppingCart className="w-4 h-4 text-brand" /> Stock Selector
             </h2>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
               <input
                 type="text"
-                placeholder="Search SKU..."
+                placeholder="Product, SKU or Code..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand/20 transition-all font-medium"
+                className="input-base w-full pl-10 h-10 text-xs"
               />
             </div>
           </div>
@@ -199,20 +266,23 @@ export default function BillingPage() {
               <button
                 key={p.id}
                 onClick={() => addToCart(p)}
-                disabled={p.stock < 1}
+                disabled={p.stock < 1 && documentType === 'invoice'}
                 className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm text-left hover:border-brand hover:shadow-indigo-50 transition-all active:scale-95 group relative overflow-hidden disabled:opacity-50"
               >
-                <p className="font-bold text-slate-800 text-sm mb-1 group-hover:text-brand transition-colors">{p.name}</p>
+                <div className="flex justify-between items-start mb-1">
+                  <p className="font-black text-slate-800 text-sm group-hover:text-brand transition-colors">{p.name}</p>
+                  <span className="text-[9px] font-black text-slate-400 font-mono tracking-tighter bg-slate-50 px-1.5 py-0.5 rounded italic">HSN:{p.hsnCode || 'N/A'}</span>
+                </div>
                 <div className="flex items-center gap-2 mb-4">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{p.category}</span>
-                  {p.stock < 10 && p.stock > 0 && <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />}
+                  <span className="text-[9px] font-black text-brand uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-full">{p.gstRate}% GST</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{p.category}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="font-black text-slate-900">{formatCurrency(p.price)}</span>
-                  <div className="px-2.5 py-1 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-400">STOCK: {p.stock}</div>
-                </div>
-                <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-all">
-                  <Plus className="w-4 h-4 text-brand" />
+                  <span className="text-lg font-black text-slate-900">{formatCurrency(p.price)}</span>
+                  <div className={cn(
+                    "px-2.5 py-1 rounded-lg text-[9px] font-bold",
+                    p.stock < 10 ? "bg-rose-50 text-rose-500" : "bg-slate-50 text-slate-400"
+                  )}>STK: {p.stock}</div>
                 </div>
               </button>
             ))}
@@ -226,13 +296,13 @@ export default function BillingPage() {
               <TrendingUp className="w-6 h-6 text-emerald-500" />
             </div>
             <div>
-              <p className="text-xs font-black text-emerald-700 uppercase tracking-widest">Growth Engine Active</p>
-              <p className="text-sm font-bold text-slate-600">Points available for returning customers.</p>
+              <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Growth Engine Active</p>
+              <p className="text-xs font-bold text-slate-500">Shop: {tenant?.state || 'Unknown State'} ({isInterState ? 'Inter-state' : 'Intra-state'})</p>
             </div>
           </div>
           {activeCustomer && (
             <div className="text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Available Loyalty Points</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Loyalty Points</p>
               <div className="flex items-center justify-end gap-2 text-brand">
                 <Gift className="w-4 h-4" />
                 <span className="text-lg font-black">{activeCustomer.loyaltyPoints || 0}</span>
@@ -243,125 +313,160 @@ export default function BillingPage() {
       </div>
 
       {/* Right Cart Section */}
-      <aside className="lg:w-[420px] flex flex-col gap-6">
+      <aside className="lg:w-[480px] flex flex-col gap-6">
         <div className="glass-card flex-1 flex flex-col overflow-hidden shadow-2xl shadow-slate-200/50">
           <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h2 className="text-xs font-black text-slate-700 uppercase tracking-widest">Selected Items</h2>
-            <span className="px-2 py-0.5 bg-brand text-white rounded text-[10px] font-black">{cart.length} ITEMS</span>
+            <h2 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Billing Snapshot</h2>
+            <span className="px-3 py-1 bg-brand text-white rounded-full text-[10px] font-black">{cart.length} LINE ITEMS</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {cart.map(item => (
-              <div key={item.product.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center gap-4 group">
-                <div className="flex-1">
-                  <p className="text-xs font-bold text-slate-800">{item.product.name}</p>
-                  <p className="text-[10px] text-slate-400 font-bold">{formatCurrency(item.product.price)} / unit</p>
+            {processedItems.map(item => (
+              <div key={item.product.id} className="p-4 bg-white border border-slate-100 rounded-2xl space-y-2 group">
+                <div className="flex justify-between items-start">
+                  <p className="text-xs font-black text-slate-800">{item.product.name}</p>
+                  <p className="text-xs font-black text-slate-900">{formatCurrency(item.base + item.gstAmt)}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center border border-slate-100 rounded-lg p-1 bg-slate-50">
-                    <button onClick={() => updateQuantity(item.product.id, -1)} className="w-6 h-6 flex items-center justify-center hover:bg-white rounded transition-all"><Minus className="w-2.5 h-2.5" /></button>
-                    <span className="w-6 text-center text-xs font-black">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.product.id, 1)} className="w-6 h-6 flex items-center justify-center hover:bg-white rounded transition-all"><Plus className="w-2.5 h-2.5" /></button>
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span>{item.quantity} x {formatCurrency(item.product.price)}</span>
+                    <span className="px-1.5 py-0.5 bg-slate-50 rounded text-[9px] font-black text-slate-400">GST {item.product.gstRate}%</span>
                   </div>
-                  <button onClick={() => removeFromCart(item.product.id)} className="p-1 hover:text-rose-500 text-slate-200 transition-all"><Trash2 className="w-4 h-4" /></button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center border border-slate-100 rounded-lg p-0.5 bg-slate-50">
+                      <button onClick={() => updateQuantity(item.product.id, -1)} className="w-5 h-5 flex items-center justify-center hover:bg-white rounded transition-all"><Minus className="w-2 h-2" /></button>
+                      <span className="w-6 text-center text-[10px] font-black">{item.quantity}</span>
+                      <button onClick={() => updateQuantity(item.product.id, 1)} className="w-5 h-5 flex items-center justify-center hover:bg-white rounded transition-all"><Plus className="w-2 h-2" /></button>
+                    </div>
+                    <button onClick={() => removeFromCart(item.product.id)} className="p-1 hover:text-rose-500 text-slate-200 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
                 </div>
               </div>
             ))}
             {cart.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 py-12">
-                <ShoppingCart className="w-12 h-12 mb-4 opacity-10" />
-                <p className="text-xs font-bold uppercase tracking-widest">Checkout queue empty</p>
+                <FileBox className="w-12 h-12 mb-4 opacity-10" />
+                <p className="text-[10px] font-black uppercase tracking-widest">Cart is empty</p>
               </div>
             )}
           </div>
 
-          {/* Customer & Discounts */}
+          {/* Customer & GST Details */}
           <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">
-            <div className="space-y-3">
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                <input
-                  type="tel"
-                  placeholder="Customer Phone Number"
-                  value={customer.phone}
-                  onChange={(e) => handlePhoneChange(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand/20 transition-all placeholder:text-slate-300"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Customer Phone</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <input type="tel" placeholder="10 Digits" value={customer.phone} onChange={(e) => handlePhoneChange(e.target.value)} className="input-base w-full pl-10 py-3 text-sm" />
+                </div>
               </div>
-              <input
-                type="text"
-                placeholder="Name (Autofilled)"
-                value={customer.name}
-                onChange={(e) => setCustomer(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none transition-all disabled:opacity-50"
-              />
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Customer Name</label>
+                <input type="text" placeholder="Full Name" value={customer.name} onChange={(e) => setCustomer(prev => ({ ...prev, name: e.target.value }))} className="input-base w-full py-3 text-sm" />
+              </div>
             </div>
 
-            {/* Coupons & Loyalty Toggles */}
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => {
-                  const code = prompt('Enter Coupon Code:');
-                  if(code) applyCoupon(code.toUpperCase());
-                }}
-                className={cn(
-                  "p-3 rounded-xl border flex flex-col items-center gap-1 transition-all",
-                  selectedCoupon ? "bg-indigo-50 border-indigo-200 text-indigo-600" : "bg-white border-slate-100 text-slate-400 grayscale"
-                )}
-              >
-                <Ticket className="w-4 h-4" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Coupon</span>
-              </button>
-              <button 
-                disabled={!activeCustomer || (activeCustomer.loyaltyPoints || 0) < 10}
-                onClick={() => setRedeemPoints(redeemPoints > 0 ? 0 : Math.min(activeCustomer?.loyaltyPoints || 0, 500))}
-                className={cn(
-                  "p-3 rounded-xl border flex flex-col items-center gap-1 transition-all disabled:opacity-30",
-                  redeemPoints > 0 ? "bg-amber-50 border-amber-200 text-amber-600" : "bg-white border-slate-100 text-slate-400 grayscale"
-                )}
-              >
-                <Sparkles className="w-4 h-4" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Loyalty</span>
-              </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {isB2B && (
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-brand uppercase tracking-widest pl-1">Buyer GSTIN</label>
+                  <input type="text" placeholder="15 Digit GSTIN" value={customer.gstin} onChange={(e) => setCustomer(prev => ({ ...prev, gstin: e.target.value.toUpperCase() }))} className="input-base w-full py-3 text-sm focus:ring-brand/20" />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Billing State</label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <select value={customer.state} onChange={(e) => setCustomer(prev => ({ ...prev, state: e.target.value }))} className="input-base w-full pl-10 py-3 text-sm appearance-none">
+                    {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="p-8 bg-slate-900 text-white space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest">
-                <span>Subtotal</span>
+            <div className="space-y-3">
+              <div className="flex justify-between text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                <span>Total Taxable Value</span>
                 <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="space-y-2 pb-2 border-b border-white/5">
+                {isInterState ? (
+                  <div className="flex justify-between text-[11px] font-black text-brand uppercase tracking-widest">
+                    <span>IGST Collected</span>
+                    <span>{formatCurrency(igst)}</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-[11px] font-black text-indigo-400 uppercase tracking-widest">
+                      <span>CGST Collected</span>
+                      <span>{formatCurrency(cgst)}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] font-black text-indigo-400 uppercase tracking-widest">
+                      <span>SGST Collected</span>
+                      <span>{formatCurrency(sgst)}</span>
+                    </div>
+                  </>
+                )}
               </div>
               <AnimatePresence>
                 {(discountAmount > 0 || pointValue > 0) && (
-                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-2 overflow-hidden">
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-1.5 overflow-hidden">
                     {discountAmount > 0 && (
-                      <div className="flex justify-between text-xs font-bold text-indigo-400 uppercase tracking-widest">
-                        <span>Discount</span>
+                      <div className="flex justify-between text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                        <span>Extra Discounts</span>
                         <span>-{formatCurrency(discountAmount)}</span>
                       </div>
                     )}
                     {pointValue > 0 && (
-                      <div className="flex justify-between text-xs font-bold text-amber-400 uppercase tracking-widest">
-                        <span>Points Redeemed</span>
+                      <div className="flex justify-between text-[10px] font-black text-amber-400 uppercase tracking-widest">
+                        <span>Points Benefit</span>
                         <span>-{formatCurrency(pointValue)}</span>
                       </div>
                     )}
                   </motion.div>
                 )}
               </AnimatePresence>
-              <div className="flex justify-between items-end pt-2">
-                <span className="text-xs font-black uppercase tracking-widest text-slate-400">Total Payable</span>
-                <span className="text-3xl font-black">{formatCurrency(grandTotal)}</span>
+              <div className="flex justify-between items-end pt-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Final Invoice Total</p>
+                  <p className="text-4xl font-black tracking-tighter">{formatCurrency(grandTotal)}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      const code = prompt('Enter Coupon:');
+                      if(code) applyCoupon(code.toUpperCase());
+                    }}
+                    className={cn(
+                      "p-3 rounded-xl border border-white/10 transition-all",
+                      selectedCoupon ? "bg-brand text-white border-brand" : "text-slate-500 hover:text-white"
+                    )}
+                  >
+                    <Ticket className="w-5 h-5" />
+                  </button>
+                  <button 
+                    disabled={!activeCustomer || (activeCustomer.loyaltyPoints || 0) < 10}
+                    onClick={() => setRedeemPoints(redeemPoints > 0 ? 0 : Math.min(activeCustomer?.loyaltyPoints || 0, 500))}
+                    className={cn(
+                      "p-3 rounded-xl border border-white/10 transition-all disabled:opacity-30",
+                      redeemPoints > 0 ? "bg-amber-500 text-white border-amber-500" : "text-slate-500 hover:text-white"
+                    )}
+                  >
+                    <Sparkles className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             </div>
 
             <button
               disabled={cart.length === 0 || loading}
               onClick={handleSubmit}
-              className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl shadow-indigo-500/20 disabled:opacity-50"
+              className="w-full py-5 bg-brand text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-3 shadow-xl shadow-indigo-600/20 disabled:opacity-50"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Finalize Transaction'}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : `Finalize ${documentType}`}
             </button>
           </div>
         </div>

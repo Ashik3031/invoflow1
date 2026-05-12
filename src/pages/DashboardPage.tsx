@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ShoppingBag, FileText, AlertTriangle, IndianRupee, ArrowRight, Loader2, TrendingUp, Users, Crown, Zap } from 'lucide-react';
+import { ShoppingBag, FileText, AlertTriangle, IndianRupee, ArrowRight, Loader2, TrendingUp, Users, Crown, Zap, Target } from 'lucide-react';
 import api from '../lib/api';
 import { DashboardData } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
@@ -7,22 +7,39 @@ import { motion } from 'motion/react';
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [gstSummary, setGstSummary] = useState<any>(null);
+  const [pnl, setPnl] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/billing/dashboard')
-      .then(res => setData(res.data))
-      .catch(err => console.error(err))
-      .finally(() => setLoading(false));
+    fetchDashboard();
   }, []);
+
+  const fetchDashboard = async () => {
+    try {
+      const now = new Date();
+      const [dRes, gRes, pRes] = await Promise.all([
+        api.get('/billing/dashboard'),
+        api.get('/billing/gst-summary', { params: { month: now.getMonth() + 1, year: now.getFullYear() } }),
+        api.get('/accounts/profit-loss', { params: { from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0] } })
+      ]);
+      setData(dRes.data);
+      setGstSummary(gRes.data);
+      setPnl(pRes.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-brand" /></div>;
 
   const stats = [
     { label: "Today's Gross", value: formatCurrency(data?.todaySales || 0), icon: IndianRupee, trend: '↑ 12%', color: 'border-indigo-100' },
-    { label: "Growth Points", value: `${(data?.todaySales || 0) * 0.05} Pts`, icon: Zap, trend: 'Calculated', color: 'border-amber-100' },
-    { label: "Retained Cust.", value: `${data?.bestCustomers?.length || 0} Growth`, icon: Users, trend: 'High Value', color: 'border-emerald-100' },
-    { label: "Efficiency", value: '94%', icon: TrendingUp, trend: 'Optimal', color: 'border-blue-100' },
+    { label: "Monthly Profit", value: formatCurrency(pnl?.netProfit || 0), icon: Zap, trend: pnl?.profitMargin || '0%', color: 'border-emerald-100' },
+    { label: "GST Collected", value: formatCurrency(gstSummary?.totalGst || 0), icon: Target, trend: 'This Month', color: 'border-amber-100' },
+    { label: "Retained Items", value: `${data?.lowStockItems || 0} Low`, icon: TrendingUp, trend: 'Inventory', color: 'border-blue-100' },
   ];
 
   return (

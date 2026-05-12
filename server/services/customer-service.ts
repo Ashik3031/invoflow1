@@ -1,37 +1,35 @@
 import express from 'express';
-import { getDb } from '../db.js';
+import { CustomerModel, BillModel } from '../db.js';
 import { nanoid } from 'nanoid';
 import { AuthRequest } from '../middleware/auth.js';
 
 const router = express.Router();
 
 router.get('/list', async (req: AuthRequest, res) => {
-  const db = await getDb();
-  const customers = db.data.customers.filter(c => c.tenantId === req.user?.tenantId);
+  const customers = await CustomerModel.find({ tenantId: req.user?.tenantId });
   res.json(customers);
 });
 
 router.get('/:id/history', async (req: AuthRequest, res) => {
-  const db = await getDb();
-  const bills = db.data.bills.filter(b => b.customerId === req.params.id && b.tenantId === req.user?.tenantId);
+  const bills = await BillModel.find({ customerId: req.params.id, tenantId: req.user?.tenantId });
   res.json(bills);
 });
 
 router.put('/:id/notes', async (req: AuthRequest, res) => {
-  const db = await getDb();
-  const customer = db.data.customers.find(c => c.id === req.params.id && c.tenantId === req.user?.tenantId);
+  const customer = await CustomerModel.findOneAndUpdate(
+    { id: req.params.id, tenantId: req.user?.tenantId },
+    { $set: { notes: req.body.notes } },
+    { new: true }
+  );
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
 
-  customer.notes = req.body.notes;
-  await db.write();
   res.json(customer);
 });
 
 router.post('/create', async (req: AuthRequest, res) => {
   const { name, phone } = req.body;
-  const db = await getDb();
 
-  const existing = db.data.customers.find(c => c.phone === phone && c.tenantId === req.user?.tenantId);
+  const existing = await CustomerModel.findOne({ phone, tenantId: req.user?.tenantId });
   if (existing) return res.json(existing);
 
   const newCustomer = {
@@ -45,9 +43,8 @@ router.post('/create', async (req: AuthRequest, res) => {
     loyaltyPoints: 0
   };
 
-  db.data.customers.push(newCustomer);
-  await db.write();
-  res.json(newCustomer);
+  const customer = await CustomerModel.create(newCustomer);
+  res.json(customer);
 });
 
 export default router;

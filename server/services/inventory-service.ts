@@ -1,19 +1,23 @@
 import express from 'express';
-import { getDb } from '../db.js';
+import { ProductModel } from '../db.js';
 import { nanoid } from 'nanoid';
 import { AuthRequest } from '../middleware/auth.js';
 
 const router = express.Router();
 
 router.get('/products', async (req: AuthRequest, res) => {
-  const db = await getDb();
-  const products = db.data.products.filter(p => p.tenantId === req.user?.tenantId);
+  const products = await ProductModel.find({ tenantId: req.user?.tenantId });
   res.json(products);
 });
 
+router.get('/product/barcode/:code', async (req: AuthRequest, res) => {
+  const product = await ProductModel.findOne({ barcode: req.params.code, tenantId: req.user?.tenantId });
+  if (!product) return res.status(404).json({ message: 'Product not found' });
+  res.json(product);
+});
+
 router.post('/product', async (req: AuthRequest, res) => {
-  const { name, price, stock, category } = req.body;
-  const db = await getDb();
+  const { name, price, stock, category, hsnCode, gstRate, barcode } = req.body;
 
   const newProduct = {
     id: nanoid(),
@@ -21,29 +25,30 @@ router.post('/product', async (req: AuthRequest, res) => {
     price,
     stock,
     category,
+    hsnCode: hsnCode || '',
+    gstRate: gstRate || 0,
+    barcode: barcode || '',
     tenantId: req.user!.tenantId
   };
 
-  db.data.products.push(newProduct);
-  await db.write();
-  res.json(newProduct);
+  const product = await ProductModel.create(newProduct);
+  res.json(product);
 });
 
 router.put('/product/:id', async (req: AuthRequest, res) => {
-  const db = await getDb();
-  const index = db.data.products.findIndex(p => p.id === req.params.id && p.tenantId === req.user?.tenantId);
+  const product = await ProductModel.findOneAndUpdate(
+    { id: req.params.id, tenantId: req.user?.tenantId },
+    { $set: req.body },
+    { new: true }
+  );
 
-  if (index === -1) return res.status(404).json({ message: 'Product not found' });
+  if (!product) return res.status(404).json({ message: 'Product not found' });
 
-  db.data.products[index] = { ...db.data.products[index], ...req.body };
-  await db.write();
-  res.json(db.data.products[index]);
+  res.json(product);
 });
 
 router.delete('/product/:id', async (req: AuthRequest, res) => {
-  const db = await getDb();
-  db.data.products = db.data.products.filter(p => !(p.id === req.params.id && p.tenantId === req.user?.tenantId));
-  await db.write();
+  await ProductModel.deleteOne({ id: req.params.id, tenantId: req.user?.tenantId });
   res.json({ message: 'Product deleted' });
 });
 

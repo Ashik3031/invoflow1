@@ -10,6 +10,9 @@ export interface Product {
   price: number;
   stock: number;
   category: string;
+  hsnCode: string;
+  gstRate: number;
+  barcode?: string;
 }
 
 export interface Customer {
@@ -42,9 +45,20 @@ export interface Coupon {
 
 export interface BillItem {
   productId: string;
+  productName: string;
   quantity: number;
   price: number;
-  name?: string;
+  hsnCode: string;
+  gstRate: number;
+  gstAmount: number;
+  lineTotal: number;
+}
+
+export interface BillPayment {
+  mode: 'cash' | 'upi' | 'card' | 'credit' | 'bank_transfer';
+  amount: number;
+  reference?: string;
+  paidAt: string;
 }
 
 export interface Bill {
@@ -55,8 +69,110 @@ export interface Bill {
   totalAmount: number;
   discountAmount: number;
   pointsRedeemed: number;
-  paymentStatus: 'paid' | 'unpaid';
+  paymentStatus: 'paid' | 'partial' | 'unpaid';
+  payments: BillPayment[];
   createdAt: string;
+  documentType: 'invoice' | 'estimate' | 'credit_note' | 'challan';
+  customerGstin?: string;
+  customerState?: string;
+  isInterState: boolean;
+  gstBreakdown: {
+    cgst: number;
+    sgst: number;
+    igst: number;
+    totalGst: number;
+  };
+  subTotal: number;
+  linkedBillId?: string;
+  convertedToInvoice?: boolean;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  createdAt: string;
+}
+
+export interface PurchaseBillItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  purchasePrice: number;
+}
+
+export interface PurchaseBill {
+  id: string;
+  billNumber: string;
+  supplierId: string;
+  supplierName: string;
+  items: PurchaseBillItem[];
+  totalAmount: number;
+  paymentStatus: 'paid' | 'unpaid';
+  billDate: string;
+  notes: string;
+}
+
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  category: 'Rent' | 'Salary' | 'Transport' | 'Utilities' | 'Marketing' | 'Other';
+  date: string;
+  note: string;
+}
+
+export interface CashBook {
+  id: string;
+  date: string;
+  type: 'in' | 'out';
+  amount: number;
+  note: string;
+  referenceType?: 'sale' | 'expense' | 'purchase' | 'manual';
+  referenceId?: string;
+}
+
+export interface BankAccount {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  ifsc: string;
+  upiId: string;
+  openingBalance: number;
+  balance?: number; // Calculated on frontend or backend
+}
+
+export interface BankTransaction {
+  id: string;
+  bankAccountId: string;
+  date: string;
+  type: 'credit' | 'debit';
+  amount: number;
+  note: string;
+  referenceType?: 'sale' | 'expense' | 'purchase' | 'manual';
+  referenceId?: string;
+}
+
+export interface Payment {
+  id: string;
+  billId: string;
+  billType: 'sale' | 'purchase';
+  amount: number;
+  paymentMode: 'cash' | 'upi' | 'card' | 'bank_transfer' | 'credit';
+  paymentDate: string;
+  note: string;
+}
+
+export interface ProfitLossData {
+  period: { from: string; to: string };
+  revenue: number;
+  costOfGoods: number;
+  grossProfit: number;
+  operatingExpenses: number;
+  netProfit: number;
+  profitMargin: string;
 }
 
 export interface DashboardData {

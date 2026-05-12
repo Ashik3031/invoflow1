@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Receipt, Package, Users, BarChart3, Gift, LogOut, Store } from 'lucide-react';
+import { LayoutDashboard, Receipt, Package, Users, BarChart3, Gift, ShoppingCart, Truck, Wallet, LogOut, Store, FileText, CornerUpLeft, IndianRupee, Landmark, Activity, FilePieChart, Settings, Monitor } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { cn } from '../lib/utils';
 
@@ -20,10 +20,20 @@ export default function Layout({ children }: LayoutProps) {
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/billing', icon: Receipt, label: 'Billing' },
+    { to: '/outstanding', icon: Activity, label: 'Outstanding' },
+    { to: '/cash', icon: IndianRupee, label: 'Cash Book' },
+    { to: '/banks', icon: Landmark, label: 'Banks' },
+    { to: '/estimates', icon: FileText, label: 'Estimates' },
+    { to: '/credit-notes', icon: CornerUpLeft, label: 'Returns' },
     { to: '/inventory', icon: Package, label: 'Inventory' },
+    { to: '/purchases', icon: ShoppingCart, label: 'Purchases' },
+    { to: '/suppliers', icon: Truck, label: 'Suppliers' },
+    { to: '/expenses', icon: Wallet, label: 'Expenses' },
     { to: '/customers', icon: Users, label: 'Customers' },
     { to: '/marketing', icon: Gift, label: 'Marketing' },
+    { to: '/reports', icon: FilePieChart, label: 'Reports' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 
   return (
@@ -40,7 +50,14 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
 
-        <nav className="flex-1 p-6 space-y-1">
+        <nav className="flex-1 p-6 space-y-1 overflow-y-auto">
+          <button
+            onClick={() => navigate('/pos')}
+            className="w-full mb-4 flex items-center gap-3 px-4 py-4 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all font-bold text-sm"
+          >
+            <Monitor className="w-5 h-5 text-indigo-100" />
+            POS Terminal (Open)
+          </button>
           {navItems.map((item) => (
             <NavLink
               key={item.to}
