@@ -1,6 +1,6 @@
 {
-  "name": "Xyraco Billing Lite",
+  "name": "Cloud Billing POS",
   "description": "A fast, mobile-first SaaS billing app for small shop owners with multi-tenant support, inventory, and customer tracking.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

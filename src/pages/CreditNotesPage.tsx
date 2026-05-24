@@ -16,8 +16,13 @@ export default function CreditNotesPage() {
 
   const fetchBills = async () => {
     try {
-      const { data } = await api.get('/billing/history');
-      setBills(data.filter((b: Bill) => b.documentType === 'credit_note'));
+      const { data } = await api.get('/billing/list');
+      if (Array.isArray(data)) {
+        setBills(data.filter((b: Bill) => b.documentType === 'credit_note'));
+      } else {
+        console.warn('Expected array from /billing/list, got:', data);
+        setBills([]);
+      }
     } catch (err) {
       console.error(err);
     } finally {

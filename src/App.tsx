@@ -19,6 +19,7 @@ import ExpensesPage from './pages/ExpensesPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import EstimatesPage from './pages/EstimatesPage';
 import CreditNotesPage from './pages/CreditNotesPage';
+import ChallansPage from './pages/ChallansPage';
 import CashBookPage from './pages/CashBookPage';
 import BanksPage from './pages/BanksPage';
 import OutstandingPage from './pages/OutstandingPage';
@@ -30,7 +31,10 @@ import RevenueTrendPage from './pages/reports/RevenueTrendPage';
 import ExpenseSummaryPage from './pages/reports/ExpenseSummaryPage';
 import GstSummaryPage from './pages/reports/GstSummaryPage';
 import StockLedgerPage from './pages/reports/StockLedgerPage';
+import ValuationReportPage from './pages/reports/ValuationReportPage';
+import LoyaltyReportPage from './pages/reports/LoyaltyReportPage';
 import POSPage from './pages/POSPage';
+import GSTPage from './pages/GSTPage';
 import PublicStorePage from './pages/PublicStorePage';
 import SettingsPage from './pages/SettingsPage';
 import { useAuthStore } from './store/useAuthStore';
@@ -63,6 +67,7 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/billing" element={<BillingPage />} />
+                  <Route path="/gst" element={<GSTPage />} />
                   <Route path="/inventory" element={<InventoryPage />} />
                   <Route path="/purchases" element={<PurchasesPage />} />
                   <Route path="/suppliers" element={<SuppliersPage />} />
@@ -70,6 +75,7 @@ export default function App() {
                   <Route path="/customers" element={<CustomersPage />} />
                   <Route path="/marketing" element={<MarketingPage />} />
                   <Route path="/estimates" element={<EstimatesPage />} />
+                  <Route path="/challans" element={<ChallansPage />} />
                   <Route path="/credit-notes" element={<CreditNotesPage />} />
                   <Route path="/cash" element={<CashBookPage />} />
                   <Route path="/banks" element={<BanksPage />} />
@@ -82,6 +88,8 @@ export default function App() {
                   <Route path="/reports/expense-summary" element={<ExpenseSummaryPage />} />
                   <Route path="/reports/gst-summary" element={<GstSummaryPage />} />
                   <Route path="/reports/stock-ledger" element={<StockLedgerPage />} />
+                  <Route path="/reports/valuation" element={<ValuationReportPage />} />
+                  <Route path="/reports/loyalty" element={<LoyaltyReportPage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Routes>

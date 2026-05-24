@@ -22,8 +22,8 @@ export default function StockLedgerPage() {
 
   const fetchProducts = async () => {
     try {
-      const { data } = await api.get('/inventory');
-      setProducts(data);
+      const { data } = await api.get('/inventory/products');
+      setProducts(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     }
@@ -34,9 +34,10 @@ export default function StockLedgerPage() {
     try {
       setLoading(true);
       const { data } = await api.get(`/reports/stock-ledger/${id}`, { params: range });
-      setLedger(data);
+      setLedger(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setLedger([]);
     } finally {
       setLoading(false);
     }

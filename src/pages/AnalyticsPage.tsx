@@ -34,8 +34,8 @@ export default function AnalyticsPage() {
         api.get('/billing/list'),
         api.get('/inventory/products')
       ]);
-      setBills(billsRes.data);
-      setProducts(productsRes.data);
+      setBills(Array.isArray(billsRes.data) ? billsRes.data : []);
+      setProducts(Array.isArray(productsRes.data) ? productsRes.data : []);
     } catch (err) {
       console.error(err);
     } finally {

@@ -13,6 +13,7 @@ export interface Product {
   hsnCode: string;
   gstRate: number;
   barcode?: string;
+  purchasePrice?: number;
 }
 
 export interface Customer {
@@ -65,6 +66,8 @@ export interface Bill {
   id: string;
   billNumber: string;
   customerId?: string;
+  customerName: string;
+  customerPhone?: string;
   items: BillItem[];
   totalAmount: number;
   discountAmount: number;

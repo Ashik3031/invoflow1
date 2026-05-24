@@ -63,6 +63,9 @@ router.post('/bill/create', async (req: AuthRequest, res) => {
 
   // 1. Calculate Total & Increase Stock
   let totalAmount = 0;
+  let subTotal = 0;
+  let totalGst = 0;
+  let cgst = 0, sgst = 0, igst = 0;
   const processedItems = [];
 
   for (const item of items) {
@@ -70,15 +73,33 @@ router.post('/bill/create', async (req: AuthRequest, res) => {
     if (product) {
       product.stock += item.quantity;
       await product.save();
-      totalAmount += item.purchasePrice * item.quantity;
+      
+      const itemPrice = item.purchasePrice || product.purchasePrice || (product.price * 0.7);
+      const itemGstRate = product.gstRate || 0;
+      const itemBase = itemPrice * item.quantity;
+      const itemGst = itemBase * (itemGstRate / 100);
+      const itemLineTotal = itemBase + itemGst;
+
+      subTotal += itemBase;
+      totalGst += itemGst;
+      
       processedItems.push({
         productId: item.productId,
         productName: product.name,
         quantity: item.quantity,
-        purchasePrice: item.purchasePrice
+        purchasePrice: itemPrice,
+        gstRate: itemGstRate,
+        gstAmount: itemGst,
+        lineTotal: itemLineTotal
       });
     }
   }
+
+  // Determine state of supplier for GST split logic
+  // Assume intra-state by default for now, or check supplier address/state if we had it
+  cgst = totalGst / 2;
+  sgst = totalGst / 2;
+  totalAmount = subTotal + totalGst;
 
   // 2. Generate Bill Number
   const count = await PurchaseBillModel.countDocuments({ tenantId });
@@ -91,6 +112,8 @@ router.post('/bill/create', async (req: AuthRequest, res) => {
     supplierName: supplier?.name || 'Walk-in Supplier',
     items: processedItems,
     totalAmount,
+    subTotal,
+    gstBreakdown: { cgst, sgst, igst, totalGst },
     paymentStatus: paymentStatus || 'unpaid',
     billDate: new Date().toISOString(),
     notes: notes || '',
@@ -132,9 +155,13 @@ router.get('/expenses', async (req: AuthRequest, res) => {
 
   const query: any = { tenantId };
   if (category) query.category = category;
-  if (month && year) {
-    const startDate = new Date(parseInt(year as string), parseInt(month as string) - 1, 1).toISOString();
-    const endDate = new Date(parseInt(year as string), parseInt(month as string), 0, 23, 59, 59).toISOString();
+  
+  const m = month ? parseInt(month as string) : NaN;
+  const y = year ? parseInt(year as string) : NaN;
+
+  if (!isNaN(m) && !isNaN(y)) {
+    const startDate = new Date(y, m - 1, 1).toISOString();
+    const endDate = new Date(y, m, 0, 23, 59, 59).toISOString();
     query.date = { $gte: startDate, $lte: endDate };
   }
 
@@ -172,8 +199,20 @@ router.post('/expense', async (req: AuthRequest, res) => {
 });
 
 router.get('/expenses/summary', async (req: AuthRequest, res) => {
+  const { month, year } = req.query;
   const tenantId = req.user!.tenantId;
-  const expenses = await ExpenseModel.find({ tenantId });
+  
+  const query: any = { tenantId };
+  const m = month ? parseInt(month as string) : NaN;
+  const y = year ? parseInt(year as string) : NaN;
+
+  if (!isNaN(m) && !isNaN(y)) {
+    const startDate = new Date(y, m - 1, 1).toISOString();
+    const endDate = new Date(y, m, 0, 23, 59, 59).toISOString();
+    query.date = { $gte: startDate, $lte: endDate };
+  }
+
+  const expenses = await ExpenseModel.find(query);
 
   const categories = ['Rent', 'Salary', 'Transport', 'Utilities', 'Marketing', 'Other'];
   const summary = categories.map(cat => ({

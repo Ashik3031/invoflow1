@@ -11,7 +11,7 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18', barcode: '' });
+  const [formData, setFormData] = useState({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18', barcode: '', purchasePrice: '' });
 
   useEffect(() => {
     fetchProducts();
@@ -20,9 +20,10 @@ export default function InventoryPage() {
   const fetchProducts = async () => {
     try {
       const res = await api.get('/inventory/products');
-      setProducts(res.data);
+      setProducts(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error(err);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -35,7 +36,8 @@ export default function InventoryPage() {
         ...formData, 
         price: Number(formData.price), 
         stock: Number(formData.stock),
-        gstRate: Number(formData.gstRate)
+        gstRate: Number(formData.gstRate),
+        purchasePrice: Number(formData.purchasePrice)
       };
       if (editingProduct) {
         await api.put(`/inventory/product/${editingProduct.id}`, payload);
@@ -44,7 +46,7 @@ export default function InventoryPage() {
       }
       setIsModalOpen(false);
       setEditingProduct(null);
-      setFormData({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18', barcode: '' });
+      setFormData({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18', barcode: '', purchasePrice: '' });
       fetchProducts();
     } catch (err) {
       alert('Failed to save product');
@@ -61,80 +63,93 @@ export default function InventoryPage() {
     }
   };
 
-  const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filtered = Array.isArray(products) ? products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())) : [];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Stock Inventory</h2>
-          <p className="text-slate-500 text-sm font-medium">Manage your retail items and availability</p>
+          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight leading-none mb-2">Inventory Management</h2>
+          <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Stock Oversight & Asset Tracking</p>
         </div>
         <button
-          onClick={() => { setEditingProduct(null); setFormData({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18' }); setIsModalOpen(true); }}
-          className="btn-primary flex items-center gap-2"
+          onClick={() => { setEditingProduct(null); setFormData({ name: '', price: '', stock: '', category: 'General', hsnCode: '', gstRate: '18', barcode: '', purchasePrice: '' }); setIsModalOpen(true); }}
+          className="btn-primary"
         >
-          <Plus className="w-4 h-4" />
-          Add New Product (F4)
+          <Plus className="w-5 h-5" />
+          Add New Product
         </button>
       </div>
 
-      <div className="relative max-w-xl">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Search items by name, category..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="input-base w-full pl-11"
-        />
-      </div>
+      <div className="modern-card p-0 overflow-hidden">
+        <div className="px-8 py-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+           <div className="relative max-w-md w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search inventory by name, category, barcode..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all font-medium"
+              />
+           </div>
+           <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Items: {filtered.length}</span>
+           </div>
+        </div>
 
-      <div className="glass-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="data-grid">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/50">
-                <th className="label-micro data-cell text-left">Product Detail</th>
-                <th className="label-micro data-cell text-left">Barcode</th>
-                <th className="label-micro data-cell text-left">HSN</th>
-                <th className="label-micro data-cell text-left">GST%</th>
-                <th className="label-micro data-cell text-left">Category</th>
-                <th className="label-micro data-cell text-left">Unit Price</th>
-                <th className="label-micro data-cell text-left">Availability</th>
-                <th className="label-micro data-cell text-right">Actions</th>
+              <tr className="bg-indigo-50/30 border-b border-slate-100">
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Product Detail</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">HSN/Barcode</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit Price</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock Level</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-50">
               {loading ? (
-                <tr><td colSpan={5} className="data-cell text-center py-12"><Loader2 className="animate-spin inline text-brand" /></td></tr>
+                <tr><td colSpan={6} className="px-8 py-20 text-center"><Loader2 className="animate-spin inline text-indigo-600" /></td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="data-cell text-center py-12 text-slate-400 font-medium">No inventory data found</td></tr>
+                <tr><td colSpan={6} className="px-8 py-20 text-center text-slate-300 font-bold uppercase tracking-widest">No inventory records found</td></tr>
               ) : (
                 filtered.map(p => (
-                  <tr key={p.id} className="data-row">
-                    <td className="data-cell font-bold text-slate-800">{p.name}</td>
-                    <td className="data-cell text-[10px] font-black text-slate-400 font-mono italic">{p.barcode || '-'}</td>
-                    <td className="data-cell text-[10px] font-black text-slate-400 font-mono italic">{p.hsnCode || '-'}</td>
-                    <td className="data-cell text-xs font-bold text-slate-600">{p.gstRate}%</td>
-                    <td className="data-cell text-slate-500 font-medium">{p.category}</td>
-                    <td className="data-cell font-mono text-sm font-bold">{formatCurrency(p.price)}</td>
-                    <td className="data-cell font-mono text-sm">
-                      <span className={cn("px-2 py-1 rounded-lg font-bold", p.stock < 10 ? "bg-rose-50 text-rose-500" : "bg-emerald-50 text-emerald-600")}>
-                        {p.stock} Units
-                      </span>
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-8 py-5">
+                       <p className="text-sm font-bold text-slate-800 leading-tight mb-1">{p.name}</p>
+                       <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest opacity-60">Gst: {p.gstRate}%</p>
                     </td>
-                    <td className="data-cell text-right">
-                      <div className="flex items-center justify-end gap-3">
+                    <td className="px-8 py-5 text-center">
+                       <code className="px-2 py-1 bg-slate-100 rounded text-[10px] font-bold text-slate-500 font-mono italic">{p.barcode || p.hsnCode || 'NO-SCAN'}</code>
+                    </td>
+                    <td className="px-8 py-5">
+                       <span className="text-sm font-medium text-slate-600">{p.category}</span>
+                    </td>
+                    <td className="px-8 py-5">
+                       <p className="text-sm font-black text-slate-800">{formatCurrency(p.price)}</p>
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest", p.stock < 10 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600 shadow-sm")}>
+                          {p.stock} Units
+                        </span>
+                        {p.stock < 10 && <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse" />}
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
-                          onClick={() => { setEditingProduct(p); setFormData({ name: p.name, price: String(p.price), stock: String(p.stock), category: p.category, hsnCode: p.hsnCode || '', gstRate: String(p.gstRate || 0), barcode: p.barcode || '' }); setIsModalOpen(true); }}
-                          className="p-2 border border-slate-100 bg-white shadow-sm hover:bg-slate-50 rounded-xl text-slate-600 transition-all active:scale-90"
+                          onClick={() => { setEditingProduct(p); setFormData({ name: p.name, price: String(p.price), stock: String(p.stock), category: p.category, hsnCode: p.hsnCode || '', gstRate: String(p.gstRate || 0), barcode: p.barcode || '', purchasePrice: String(p.purchasePrice || 0) }); setIsModalOpen(true); }}
+                          className="p-2 border border-slate-100 bg-white shadow-sm hover:border-indigo-200 hover:text-indigo-600 rounded-xl transition-all"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => handleDelete(p.id)}
-                          className="p-2 border border-rose-100 bg-white shadow-sm hover:bg-rose-50 rounded-xl text-rose-500 transition-all active:scale-90"
+                          className="p-2 border border-slate-100 bg-white shadow-sm hover:border-rose-200 hover:text-rose-600 rounded-xl transition-all"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -168,20 +183,20 @@ export default function InventoryPage() {
                   <label className="label-micro block mb-1">Product Name</label>
                   <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input-base w-full" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="label-micro block mb-1">Price (₹)</label>
+                    <label className="label-micro block mb-1">Sale Price (₹)</label>
                     <input type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="input-base w-full" />
                   </div>
                   <div>
-                    <label className="label-micro block mb-1">Stock</label>
-                    <input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="input-base w-full" />
+                    <label className="label-micro block mb-1">Pur. Price (₹)</label>
+                    <input type="number" required value={formData.purchasePrice} onChange={e => setFormData({...formData, purchasePrice: e.target.value})} className="input-base w-full" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="label-micro block mb-1">HSN Code</label>
-                    <input value={formData.hsnCode} onChange={e => setFormData({...formData, hsnCode: e.target.value})} className="input-base w-full" placeholder="e.g. 0901" />
+                    <label className="label-micro block mb-1">Stock</label>
+                    <input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="input-base w-full" />
                   </div>
                   <div>
                     <label className="label-micro block mb-1">GST Rate (%)</label>
@@ -189,6 +204,10 @@ export default function InventoryPage() {
                       {[0, 5, 12, 18, 28].map(rate => <option key={rate} value={rate}>{rate}%</option>)}
                     </select>
                   </div>
+                </div>
+                 <div>
+                  <label className="label-micro block mb-1">HSN Code</label>
+                  <input value={formData.hsnCode} onChange={e => setFormData({...formData, hsnCode: e.target.value})} className="input-base w-full" placeholder="e.g. 0901" />
                 </div>
                 <div>
                   <label className="label-micro block mb-1">Barcode (EAN/UPC)</label>

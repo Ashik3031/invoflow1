@@ -22,7 +22,7 @@ export default function OutstandingPage() {
     try {
       setLoading(true);
       const { data: res } = await api.get(`/accounts/${activeTab}`);
-      setData(res);
+      setData(Array.isArray(res) ? res : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -49,10 +49,10 @@ export default function OutstandingPage() {
     }
   };
 
-  const filtered = data.filter(item => 
+  const filtered = Array.isArray(data) ? data.filter(item => 
     (item.customerName || item.supplierName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.bill.billNumber.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ) : [];
 
   return (
     <div className="space-y-12 pb-20">
@@ -155,7 +155,7 @@ export default function OutstandingPage() {
               </div>
            </div>
            <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-              Xyraco Accounting Engine (BETA)
+              Accounting Engine (BETA)
            </div>
         </div>
       </div>

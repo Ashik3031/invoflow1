@@ -1,6 +1,10 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Receipt, Package, Users, BarChart3, Gift, ShoppingCart, Truck, Wallet, LogOut, Store, FileText, CornerUpLeft, IndianRupee, Landmark, Activity, FilePieChart, Settings, Monitor } from 'lucide-react';
+import { 
+  LayoutDashboard, Receipt, Package, Users, BarChart3, Gift, ShoppingCart, 
+  Truck, Wallet, LogOut, Store, FileText, CornerUpLeft, IndianRupee, 
+  Landmark, Activity, FilePieChart, Settings, Monitor, Search, Bell, Menu
+} from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { cn } from '../lib/utils';
 
@@ -9,7 +13,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const { user, logout } = useAuthStore();
+  const { user, logout, tenant } = useAuthStore();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -17,130 +21,157 @@ export default function Layout({ children }: LayoutProps) {
     navigate('/login');
   };
 
-  const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/billing', icon: Receipt, label: 'Billing' },
-    { to: '/outstanding', icon: Activity, label: 'Outstanding' },
-    { to: '/cash', icon: IndianRupee, label: 'Cash Book' },
-    { to: '/banks', icon: Landmark, label: 'Banks' },
-    { to: '/estimates', icon: FileText, label: 'Estimates' },
-    { to: '/credit-notes', icon: CornerUpLeft, label: 'Returns' },
-    { to: '/inventory', icon: Package, label: 'Inventory' },
-    { to: '/purchases', icon: ShoppingCart, label: 'Purchases' },
-    { to: '/suppliers', icon: Truck, label: 'Suppliers' },
-    { to: '/expenses', icon: Wallet, label: 'Expenses' },
-    { to: '/customers', icon: Users, label: 'Customers' },
-    { to: '/marketing', icon: Gift, label: 'Marketing' },
-    { to: '/reports', icon: FilePieChart, label: 'Reports' },
-    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-    { to: '/settings', icon: Settings, label: 'Settings' },
+  const navGroups = [
+    {
+      title: 'Main Navigation',
+      items: [
+        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/pos', icon: Monitor, label: 'POS Terminal' },
+      ]
+    },
+    {
+      title: 'Sales & Billing',
+      items: [
+        { to: '/billing', icon: Receipt, label: 'New Bill' },
+        { to: '/estimates', icon: FileText, label: 'Estimates' },
+        { to: '/challans', icon: Truck, label: 'Challans' },
+        { to: '/credit-notes', icon: CornerUpLeft, label: 'Returns' },
+      ]
+    },
+    {
+      title: 'Finance',
+      items: [
+        { to: '/outstanding', icon: Activity, label: 'Outstanding' },
+        { to: '/cash', icon: IndianRupee, label: 'Cash Book' },
+        { to: '/banks', icon: Landmark, label: 'Banks' },
+        { to: '/expenses', icon: Wallet, label: 'Expenses' },
+      ]
+    },
+    {
+      title: 'Operations',
+      items: [
+        { to: '/inventory', icon: Package, label: 'Inventory' },
+        { to: '/purchases', icon: ShoppingCart, label: 'Purchases' },
+        { to: '/suppliers', icon: Truck, label: 'Suppliers' },
+      ]
+    },
+    {
+      title: 'Growth & Analytics',
+      items: [
+        { to: '/gst', icon: FileText, label: 'GST Summary' },
+        { to: '/marketing', icon: Gift, label: 'Marketing' },
+        { to: '/reports', icon: FilePieChart, label: 'Reports' },
+        { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+      ]
+    },
+    {
+      title: 'Settings',
+      items: [
+        { to: '/customers', icon: Users, label: 'Customers' },
+        { to: '/settings', icon: Settings, label: 'Global Settings' },
+      ]
+    }
   ];
 
   return (
-    <div className="flex h-screen bg-surface">
+    <div className="flex h-screen bg-[#F8FAFC]">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-slate-200 bg-white flex flex-col hidden md:flex">
-        <div className="p-8 flex items-center gap-3 border-b border-slate-100">
-          <div className="w-10 h-10 bg-brand rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
-            <Store className="text-white w-6 h-6" />
+      <aside className="w-72 bg-white border-r border-[#E2E8F0] flex flex-col hidden lg:flex">
+        <div className="h-20 flex items-center gap-3 px-8 border-b border-[#F1F5F9]">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
+            <Store className="w-6 h-6" />
           </div>
           <div>
-            <span className="font-bold text-lg tracking-tight block">Xyraco</span>
-            <span className="text-[11px] font-bold text-brand uppercase tracking-wider -mt-1 block">Billing Lite</span>
+            <h1 className="font-display font-bold text-lg text-slate-800 leading-tight">Billing Lite</h1>
           </div>
         </div>
 
-        <nav className="flex-1 p-6 space-y-1 overflow-y-auto">
-          <button
-            onClick={() => navigate('/pos')}
-            className="w-full mb-4 flex items-center gap-3 px-4 py-4 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all font-bold text-sm"
-          >
-            <Monitor className="w-5 h-5 text-indigo-100" />
-            POS Terminal (Open)
-          </button>
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-semibold",
-                  isActive 
-                    ? "bg-slate-100 text-brand" 
-                    : "text-slate-400 hover:text-slate-800 hover:bg-slate-50"
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon className={cn("w-5 h-5", isActive ? "text-brand" : "text-slate-400")} />
-                  {item.label}
-                </>
-              )}
-            </NavLink>
+        <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-8 custom-scrollbar">
+          {navGroups.map((group, idx) => (
+            <div key={idx}>
+              <h2 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3">{group.title}</h2>
+              <div className="space-y-1">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      cn(
+                        "group flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 text-sm font-semibold",
+                        isActive 
+                          ? "bg-indigo-50 text-indigo-600 shadow-sm" 
+                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <item.icon className={cn("w-5 h-5 transition-colors", isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600")} />
+                        {item.label}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
-        <div className="p-6 border-t border-slate-100">
+        <div className="p-4 border-t border-[#F1F5F9]">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full text-left text-sm font-semibold text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+            className="flex items-center gap-3 px-4 py-3.5 w-full text-left text-sm font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-2xl transition-all"
           >
             <LogOut className="w-5 h-5" />
-            Logout
+            Sign Out
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
-        <header className="h-20 border-b border-slate-200 bg-white flex items-center justify-between px-8">
-          <div>
-            <h1 className="text-sm font-bold text-slate-400 md:hidden flex items-center gap-2">
-              <div className="w-6 h-6 bg-brand rounded flex items-center justify-center">
-                <Store className="w-4 h-4 text-white" />
-              </div>
-              Xyraco Lite
-            </h1>
-            <div className="hidden md:block">
-              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">Active Store</p>
-              <p className="text-sm font-bold text-slate-800">Balaji General Store</p>
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top Header */}
+        <header className="h-20 bg-white border-b border-[#E2E8F0] flex items-center justify-between px-8 z-10">
+          <div className="flex items-center gap-4 flex-1">
+            <button className="lg:hidden p-2 text-slate-500">
+               <Menu className="w-6 h-6" />
+            </button>
+            <div className="relative max-w-md w-full hidden md:block">
+               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+               <input 
+                  type="text" 
+                  placeholder="Search transactions, customers..." 
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl py-2.5 pl-11 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all"
+               />
             </div>
           </div>
-          <div className="flex-1" />
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-end hidden sm:flex">
-              <p className="text-xs font-bold text-slate-800">{user?.name}</p>
-              <p className="text-[10px] text-slate-400 font-medium">Tenant ID: {user?.tenantId?.slice(0, 8)}</p>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-sm font-bold text-slate-600 shadow-sm">
-              {user?.name?.[0]?.toUpperCase()}
+
+          <div className="flex items-center gap-3">
+            <button className="relative p-2.5 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+            </button>
+            
+            <div className="h-10 w-px bg-[#E2E8F0] mx-2 hidden sm:block"></div>
+            
+            <div className="flex items-center gap-3 pl-2">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-bold text-slate-800 leading-none">{user?.name}</p>
+                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1 opacity-70">{tenant?.shopName || 'Admin'}</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-100 ring-2 ring-indigo-50">
+                {user?.name?.[0]?.toUpperCase()}
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 max-w-7xl mx-auto w-full">
-          {children}
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+           <div className="max-w-7xl mx-auto p-8 w-full">
+              {children}
+           </div>
         </div>
-
-        {/* Mobile Nav */}
-        <nav className="md:hidden h-20 border-t border-slate-200 bg-white flex items-center justify-around px-4">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex flex-col items-center gap-1.5 p-3 transition-colors",
-                  isActive ? "text-brand" : "text-slate-400"
-                )
-              }
-            >
-              <item.icon className="w-6 h-6" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
       </main>
     </div>
   );

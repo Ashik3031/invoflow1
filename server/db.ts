@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/lite-billing';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ashikash202_db_user:CHTI9n41W2DJsYhC@cluster0.oes6jcf.mongodb.net/lite-billing?appName=Cluster0';
 
 let isConnected = false;
 
@@ -72,6 +72,7 @@ export interface Product {
   hsnCode: string;
   gstRate: number;
   barcode?: string;
+  purchasePrice?: number;
 }
 
 // ... (other interfaces same as before)
@@ -128,6 +129,8 @@ export interface Bill {
   id: string;
   billNumber: string;
   customerId?: string;
+  customerName: string;
+  customerPhone?: string;
   items: BillItem[];
   totalAmount: number;
   discountAmount: number;
@@ -166,6 +169,9 @@ export interface PurchaseBillItem {
   productName: string;
   quantity: number;
   purchasePrice: number;
+  gstRate: number;
+  gstAmount: number;
+  lineTotal: number;
 }
 
 export interface PurchaseBill {
@@ -175,10 +181,28 @@ export interface PurchaseBill {
   supplierName: string;
   items: PurchaseBillItem[];
   totalAmount: number;
+  subTotal: number;
   paymentStatus: 'paid' | 'unpaid';
   billDate: string;
   notes: string;
   tenantId: string;
+  gstBreakdown: {
+    cgst: number;
+    sgst: number;
+    igst: number;
+    totalGst: number;
+  };
+}
+
+export interface ReminderLog {
+  tenantId: string;
+  gstMonth: number;
+  gstYear: number;
+  sentAt: Date;
+  channel: 'whatsapp' | 'email';
+  urgency: 'info' | 'warning' | 'urgent' | 'critical';
+  status: 'sent' | 'failed';
+  errorMessage?: string;
 }
 
 export interface Expense {
@@ -265,7 +289,8 @@ const ProductSchema = new Schema<Product>({
   tenantId: { type: String, required: true },
   hsnCode: { type: String, required: true },
   gstRate: { type: Number, required: true },
-  barcode: String
+  barcode: String,
+  purchasePrice: { type: Number, default: 0 }
 });
 
 const CustomerSchema = new Schema<Customer>({
@@ -284,6 +309,8 @@ const BillSchema = new Schema<Bill>({
   id: { type: String, required: true, unique: true },
   billNumber: { type: String, required: true },
   customerId: String,
+  customerName: { type: String, default: 'Walk-in' },
+  customerPhone: String,
   items: [{
     productId: String,
     productName: String,
@@ -359,13 +386,34 @@ const PurchaseBillSchema = new Schema<PurchaseBill>({
     productId: String,
     productName: String,
     quantity: Number,
-    purchasePrice: Number
+    purchasePrice: Number,
+    gstRate: Number,
+    gstAmount: Number,
+    lineTotal: Number
   }],
   totalAmount: Number,
+  subTotal: Number,
   paymentStatus: { type: String, enum: ['paid', 'unpaid'] },
   billDate: String,
   notes: String,
-  tenantId: { type: String, required: true }
+  tenantId: { type: String, required: true },
+  gstBreakdown: {
+    cgst: { type: Number, default: 0 },
+    sgst: { type: Number, default: 0 },
+    igst: { type: Number, default: 0 },
+    totalGst: { type: Number, default: 0 }
+  }
+});
+
+const ReminderLogSchema = new Schema<ReminderLog>({
+  tenantId: { type: String, required: true, index: true },
+  gstMonth: { type: Number },
+  gstYear: { type: Number },
+  sentAt: { type: Date, default: Date.now },
+  channel: { type: String, enum: ['whatsapp', 'email'] },
+  urgency: { type: String, enum: ['info', 'warning', 'urgent', 'critical'] },
+  status: { type: String, enum: ['sent', 'failed'] },
+  errorMessage: { type: String }
 });
 
 const ExpenseSchema = new Schema<Expense>({
@@ -437,6 +485,7 @@ export const CashBookModel = model('CashBook', CashBookSchema);
 export const BankAccountModel = model('BankAccount', BankAccountSchema);
 export const BankTransactionModel = model('BankTransaction', BankTransactionSchema);
 export const PaymentModel = model('Payment', PaymentSchema);
+export const ReminderLogModel = model('ReminderLog', ReminderLogSchema);
 
 // Compat Layer for existing services that expect a "Data" object
 // NOTE: This is a heavy operation if done literally. 

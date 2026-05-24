@@ -17,7 +17,25 @@ const router = express.Router();
 
 router.get('/list', async (req: AuthRequest, res) => {
   const bills = await BillModel.find({ tenantId: req.user?.tenantId }).sort({ createdAt: -1 });
-  res.json(bills);
+  
+  // Create a map for quick customer lookup if needed
+  const customerIds = [...new Set(bills.map(b => b.customerId).filter(Boolean))];
+  const customers = await CustomerModel.find({ id: { $in: customerIds }, tenantId: req.user?.tenantId });
+  const customerMap = new Map(customers.map(c => [c.id, c]));
+
+  const enrichedBills = bills.map(bill => {
+    const b = bill.toObject();
+    if (!b.customerName || b.customerName === 'Walk-in') {
+      const customer = customerMap.get(b.customerId!);
+      if (customer) {
+        b.customerName = customer.name;
+        if (!b.customerPhone) b.customerPhone = customer.phone;
+      }
+    }
+    return b;
+  });
+
+  res.json(enrichedBills);
 });
 
 function calculateGST(items: any[], isInterState: boolean) {
@@ -83,8 +101,8 @@ router.post('/create', async (req: AuthRequest, res) => {
     const product = await ProductModel.findOne({ id: item.productId, tenantId });
     if (!product) continue;
 
-    if (['invoice', 'credit_note'].includes(documentType)) {
-      if (documentType === 'invoice') {
+    if (['invoice', 'credit_note', 'challan'].includes(documentType)) {
+      if (['invoice', 'challan'].includes(documentType)) {
         if (product.stock < item.quantity) {
           return res.status(400).json({ message: `Insufficient stock for ${product.name}` });
         }
@@ -167,6 +185,8 @@ router.post('/create', async (req: AuthRequest, res) => {
     id: nanoid(),
     billNumber,
     customerId,
+    customerName: customer?.name || customerName || 'Walk-in',
+    customerPhone: customer?.phone || customerPhone,
     items: gstResult.processedItems,
     totalAmount: finalAmount,
     discountAmount,
@@ -236,44 +256,106 @@ router.post('/create', async (req: AuthRequest, res) => {
   res.json(newBill);
 });
 
-router.post('/estimate/:id/convert', async (req: AuthRequest, res) => {
-  const tenantId = req.user!.tenantId;
-  const estimate = await BillModel.findOne({ id: req.params.id, tenantId, documentType: 'estimate' });
-  
-  if (!estimate) return res.status(404).json({ message: 'Estimate not found' });
-  if (estimate.convertedToInvoice) return res.status(400).json({ message: 'Already converted' });
-
-  // Stock check & update
-  for (const item of estimate.items) {
-    const product = await ProductModel.findOne({ id: item.productId, tenantId });
-    if (product) {
-      if (product.stock < item.quantity) {
-        return res.status(400).json({ message: `Insufficient stock for ${product.name}` });
-      }
-      product.stock -= item.quantity;
-      await product.save();
+router.post('/convert/:type/:id', async (req: AuthRequest, res) => {
+  try {
+    const { type, id } = req.params;
+    const { tenantId } = req.user!;
+    console.log(`Starting conversion: type=${type}, id=${id}, tenantId=${tenantId}`);
+    
+    const sourceDoc = await BillModel.findOne({ id, tenantId, documentType: type as any });
+    
+    if (!sourceDoc) {
+      console.warn(`Source document not found: type=${type}, id=${id}`);
+      return res.status(404).json({ message: `${type} not found` });
     }
+    if (sourceDoc.convertedToInvoice) return res.status(400).json({ message: 'Already converted' });
+
+    // 1. Stock check & update only if not already deducted
+    if (type === 'estimate') {
+      for (const item of sourceDoc.items) {
+        const product = await ProductModel.findOne({ id: item.productId, tenantId });
+        if (product) {
+          if (product.stock < item.quantity) {
+            return res.status(400).json({ message: `Insufficient stock for ${product.name}` });
+          }
+          product.stock -= item.quantity;
+          await product.save();
+        }
+      }
+    }
+
+    // 2. Generate Invoice Number
+    const invoiceCount = await BillModel.countDocuments({ tenantId, documentType: 'invoice' });
+    const invoiceNumber = `INV-${new Date().getFullYear()}-${(invoiceCount + 1).toString().padStart(4, '0')}`;
+
+    // 3. Prepare Invoice Data
+    const invoiceData = (sourceDoc as any).toObject();
+    delete invoiceData._id;
+    delete invoiceData.id;
+    
+    const paymentDate = new Date().toISOString();
+    const paymentMode = 'cash';
+
+    const newInvoice = await BillModel.create({
+      ...invoiceData,
+      id: nanoid(),
+      billNumber: invoiceNumber,
+      documentType: 'invoice',
+      createdAt: paymentDate,
+      paymentStatus: 'paid',
+      payments: [{
+        mode: paymentMode,
+        amount: sourceDoc.totalAmount,
+        paidAt: paymentDate
+      }],
+      convertedToInvoice: undefined
+    });
+
+    // 4. Update Customer Stats
+    if (sourceDoc.customerId) {
+      const customer = await CustomerModel.findOne({ id: sourceDoc.customerId, tenantId });
+      if (customer) {
+        customer.totalSpent = (customer.totalSpent || 0) + sourceDoc.totalAmount;
+        customer.totalOrders = (customer.totalOrders || 0) + 1;
+        customer.lastPurchaseDate = paymentDate;
+        await customer.save();
+      }
+    }
+
+    // 5. Log Accounting Records
+    await PaymentModel.create({
+      id: nanoid(),
+      billId: newInvoice.id,
+      billType: 'sale',
+      amount: sourceDoc.totalAmount,
+      paymentMode: paymentMode,
+      paymentDate: paymentDate,
+      note: `Converted from ${type}: ${sourceDoc.billNumber}`,
+      tenantId
+    });
+
+    if (paymentMode === 'cash') {
+      await CashBookModel.create({
+        id: nanoid(),
+        date: paymentDate,
+        type: 'in',
+        amount: sourceDoc.totalAmount,
+        note: `Cash sale (Converted from ${type}): ${newInvoice.billNumber}`,
+        referenceType: 'sale',
+        referenceId: newInvoice.id,
+        tenantId
+      });
+    }
+
+    // 6. Finalize Source Document
+    sourceDoc.convertedToInvoice = true;
+    await (sourceDoc as any).save();
+
+    res.json(newInvoice);
+  } catch (err: any) {
+    console.error('Conversion error:', err);
+    res.status(500).json({ message: 'Internal server error during conversion', error: err.message });
   }
-
-  const invoiceCount = await BillModel.countDocuments({ tenantId, documentType: 'invoice' });
-  const invoiceNumber = `INV-${new Date().getFullYear()}-${(invoiceCount + 1).toString().padStart(4, '0')}`;
-
-  const invoiceData = estimate.toObject();
-  delete (invoiceData as any)._id;
-  
-  const newInvoice = await BillModel.create({
-    ...invoiceData,
-    id: nanoid(),
-    billNumber: invoiceNumber,
-    documentType: 'invoice',
-    createdAt: new Date().toISOString(),
-    convertedToInvoice: undefined
-  });
-
-  estimate.convertedToInvoice = true;
-  await estimate.save();
-
-  res.json(newInvoice);
 });
 
 router.get('/gst-summary', async (req: AuthRequest, res) => {

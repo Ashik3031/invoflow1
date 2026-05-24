@@ -17,6 +17,7 @@ import accountsService from './server/services/accounts-service.js';
 import reportsService from './server/services/reports-service.js';
 import backupService from './server/services/backup-service.js';
 import storeService from './server/services/store-service.js';
+import gstService from './server/services/gst-service.js';
 import { authenticateToken } from './server/middleware/auth.js';
 import { connectToDatabase } from './server/db.js';
 
@@ -45,6 +46,7 @@ async function startServer() {
   app.use('/api/settings', authenticateToken as any, settingsService);
   app.use('/api/accounts', authenticateToken as any, accountsService);
   app.use('/api/reports', authenticateToken as any, reportsService);
+  app.use('/api/gst', authenticateToken as any, gstService);
   app.use('/api/backup', authenticateToken as any, backupService);
   app.use('/api/store', storeService);
 

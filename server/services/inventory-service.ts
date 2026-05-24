@@ -17,7 +17,7 @@ router.get('/product/barcode/:code', async (req: AuthRequest, res) => {
 });
 
 router.post('/product', async (req: AuthRequest, res) => {
-  const { name, price, stock, category, hsnCode, gstRate, barcode } = req.body;
+  const { name, price, stock, category, hsnCode, gstRate, barcode, purchasePrice } = req.body;
 
   const newProduct = {
     id: nanoid(),
@@ -28,6 +28,7 @@ router.post('/product', async (req: AuthRequest, res) => {
     hsnCode: hsnCode || '',
     gstRate: gstRate || 0,
     barcode: barcode || '',
+    purchasePrice: purchasePrice || 0,
     tenantId: req.user!.tenantId
   };
 

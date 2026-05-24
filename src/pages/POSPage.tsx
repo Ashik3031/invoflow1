@@ -23,11 +23,13 @@ export default function POSPage() {
   const [qrCodeData, setQrCodeData] = useState('');
   const [processing, setProcessing] = useState(false);
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [documentType, setDocumentType] = useState<'invoice' | 'estimate' | 'challan'>('invoice');
   
   const searchInputRef = useRef<HTMLInputElement>(null);
   const barcodeBuffer = useRef('');
 
-  const tenant = useAuthStore(state => state.tenant);
+  const { tenant, user } = useAuthStore();
 
   useEffect(() => {
     fetchProducts();
@@ -65,8 +67,13 @@ export default function POSPage() {
   const fetchProducts = async () => {
     try {
       const { data } = await api.get('/inventory/products');
-      setProducts(data);
-      setPopularProducts(data.slice(0, 12));
+      if (Array.isArray(data)) {
+        setProducts(data);
+        setPopularProducts(data.slice(0, 12));
+      } else {
+        setProducts([]);
+        setPopularProducts([]);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -130,16 +137,18 @@ export default function POSPage() {
     try {
       setProcessing(true);
       const billData = {
+        customerName,
         customerPhone,
         items: cart.map(item => ({ productId: item.id, quantity: item.quantity })),
-        payments: [{ mode: paymentMode, amount: total }],
-        documentType: 'invoice'
+        payments: documentType === 'invoice' ? [{ mode: paymentMode, amount: total }] : [],
+        documentType
       };
       
       await api.post('/billing/create', billData);
       setCart([]);
       setShowCheckout(false);
       setCustomerPhone('');
+      setCustomerName('');
       setAmountReceived('');
       window.print(); // Trigger print dialog
     } catch (err: any) {
@@ -149,11 +158,11 @@ export default function POSPage() {
     }
   };
 
-  const filteredProducts = products.filter(p => 
+  const filteredProducts = Array.isArray(products) ? products.filter(p => 
     p.name.toLowerCase().includes(search.toLowerCase()) || 
     p.barcode?.includes(search) ||
     p.category.toLowerCase().includes(search.toLowerCase())
-  );
+  ) : [];
 
   return (
     <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden font-sans">
@@ -182,9 +191,24 @@ export default function POSPage() {
         </div>
 
         <div className="flex items-center gap-6">
+           <div className="flex bg-slate-800 p-1 rounded-2xl border border-slate-700">
+            {['invoice', 'estimate', 'challan'].map((type) => (
+              <button
+                key={type}
+                onClick={() => setDocumentType(type as any)}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all",
+                  documentType === type ? "bg-indigo-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
            <div className="flex flex-col items-end">
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Operator</p>
-              <p className="text-sm font-bold flex items-center gap-2">Ashik <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /></p>
+              <div className="text-sm font-bold flex items-center gap-2">{user?.name || 'Operator'} <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /></div>
            </div>
            <button onClick={() => window.history.back()} className="p-3 bg-slate-800 rounded-xl hover:bg-slate-700 transition-colors">
               <X className="w-5 h-5 text-slate-400" />
@@ -365,15 +389,26 @@ export default function POSPage() {
                  </div>
 
                  <div className="pt-8 border-t border-slate-800 space-y-4">
-                    <div className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-3xl border border-slate-800">
-                        <User className="w-5 h-5 text-slate-500" />
-                        <input 
-                           type="text"
-                           placeholder="Customer Phone (Optional)"
-                           value={customerPhone}
-                           onChange={(e) => setCustomerPhone(e.target.value)}
-                           className="bg-transparent border-none text-sm font-bold text-white placeholder:text-slate-600 focus:ring-0 w-full"
-                        />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-3xl border border-slate-800">
+                          <User className="w-5 h-5 text-slate-500" />
+                          <input 
+                             type="text"
+                             placeholder="Name"
+                             value={customerName}
+                             onChange={(e) => setCustomerName(e.target.value)}
+                             className="bg-transparent border-none text-sm font-bold text-white placeholder:text-slate-600 focus:ring-0 w-full"
+                          />
+                      </div>
+                      <div className="flex items-center gap-4 bg-slate-800/50 p-4 rounded-3xl border border-slate-800">
+                          <input 
+                             type="text"
+                             placeholder="Phone"
+                             value={customerPhone}
+                             onChange={(e) => setCustomerPhone(e.target.value)}
+                             className="bg-transparent border-none text-sm font-bold text-white placeholder:text-slate-600 focus:ring-0 w-full"
+                          />
+                      </div>
                     </div>
 
                     <div className="flex justify-between text-4xl font-black text-white py-4">

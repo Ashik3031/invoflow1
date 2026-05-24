@@ -54,7 +54,8 @@ export default function PublicStorePage() {
     </div>
   );
 
-  const filteredProducts = storeData.products.filter((p: any) => 
+  const products = Array.isArray(storeData?.products) ? storeData.products : [];
+  const filteredProducts = products.filter((p: any) => 
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.category.toLowerCase().includes(search.toLowerCase())
   );
@@ -154,7 +155,7 @@ export default function PublicStorePage() {
 
       <footer className="bg-white border-t border-slate-100 py-12 px-6">
          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Powered by Xyraco Building Lite</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Powered by Billing Lite</p>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">© 2026 {storeData.shopName}</p>
          </div>
       </footer>

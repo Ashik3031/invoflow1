@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Trash2, ShoppingCart, User, Loader2, CheckCircle2, MessageSquare, Ticket, Gift, Sparkles, TrendingUp, Building, MapPin, FileBox } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, User, Loader2, CheckCircle2, MessageSquare, Ticket, Gift, Sparkles, TrendingUp, Building, MapPin, FileBox, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
 import { Product, Customer, LoyaltyConfig, Coupon, Bill } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
@@ -43,9 +43,9 @@ export default function BillingPage() {
         api.get('/marketing/coupons'),
         api.get('/settings/tenant')
       ]);
-      setProducts(pRes.data);
+      setProducts(Array.isArray(pRes.data) ? pRes.data : []);
       setLoyaltyConfig(lRes.data);
-      setCoupons(cRes.data);
+      setCoupons(Array.isArray(cRes.data) ? cRes.data : []);
       setTenant(tRes.data);
       if (tRes.data?.state) setCustomer(prev => ({ ...prev, state: tRes.data.state }));
     } catch (err) {
@@ -57,7 +57,8 @@ export default function BillingPage() {
     setCustomer(prev => ({ ...prev, phone: val }));
     if (val.length >= 10) {
       const dbRes = await api.get('/customer/list');
-      const found = dbRes.data.find((c: Customer) => c.phone === val);
+      const customers = Array.isArray(dbRes.data) ? dbRes.data : [];
+      const found = customers.find((c: Customer) => c.phone === val);
       if (found) {
         setActiveCustomer(found);
         setCustomer(prev => ({ ...prev, name: found.name }));
@@ -72,9 +73,10 @@ export default function BillingPage() {
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.product.id === product.id);
     if (existing) {
-      if (existing.quantity >= product.stock && documentType === 'invoice') return;
+      if (existing.quantity >= product.stock && (documentType === 'invoice' || documentType === 'challan')) return;
       setCart(cart.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
     } else {
+      if (product.stock < 1 && (documentType === 'invoice' || documentType === 'challan')) return;
       setCart([...cart, { product, quantity: 1 }]);
     }
   };
@@ -84,7 +86,7 @@ export default function BillingPage() {
       if (item.product.id === id) {
         const newQty = item.quantity + delta;
         if (newQty < 1) return item;
-        if (newQty > item.product.stock && documentType === 'invoice') return item;
+        if (newQty > item.product.stock && (documentType === 'invoice' || documentType === 'challan')) return item;
         return { ...item, quantity: newQty };
       }
       return item;
@@ -140,6 +142,7 @@ export default function BillingPage() {
           quantity: item.quantity,
           price: item.product.price
         })),
+        payments: paymentStatus === 'paid' ? [{ mode: 'cash', amount: grandTotal }] : [],
         paymentStatus,
         discountAmount,
         pointsRedeemed: redeemPoints,
@@ -261,28 +264,27 @@ export default function BillingPage() {
             </div>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 content-start">
+          <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 content-start custom-scrollbar">
             {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())).map(p => (
               <button
                 key={p.id}
                 onClick={() => addToCart(p)}
-                disabled={p.stock < 1 && documentType === 'invoice'}
-                className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm text-left hover:border-brand hover:shadow-indigo-50 transition-all active:scale-95 group relative overflow-hidden disabled:opacity-50"
+                disabled={p.stock < 1 && (documentType === 'invoice' || documentType === 'challan')}
+                className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-soft text-left hover:border-indigo-200 hover:shadow-lg hover:-translate-y-1 transition-all active:scale-95 group relative overflow-hidden disabled:opacity-50"
               >
-                <div className="flex justify-between items-start mb-1">
-                  <p className="font-black text-slate-800 text-sm group-hover:text-brand transition-colors">{p.name}</p>
-                  <span className="text-[9px] font-black text-slate-400 font-mono tracking-tighter bg-slate-50 px-1.5 py-0.5 rounded italic">HSN:{p.hsnCode || 'N/A'}</span>
+                <div className="flex justify-between items-start mb-2">
+                  <p className="font-extrabold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors leading-tight">{p.name}</p>
                 </div>
                 <div className="flex items-center gap-2 mb-4">
-                  <span className="text-[9px] font-black text-brand uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-full">{p.gstRate}% GST</span>
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{p.category}</span>
+                  <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2.5 py-1 rounded-lg">GST {p.gstRate}%</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-2.5 py-1 rounded-lg">{p.category}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-lg font-black text-slate-900">{formatCurrency(p.price)}</span>
+                  <span className="text-xl font-black text-slate-900 tracking-tight">{formatCurrency(p.price)}</span>
                   <div className={cn(
-                    "px-2.5 py-1 rounded-lg text-[9px] font-bold",
-                    p.stock < 10 ? "bg-rose-50 text-rose-500" : "bg-slate-50 text-slate-400"
-                  )}>STK: {p.stock}</div>
+                    "px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors shadow-sm",
+                    p.stock < 10 ? "bg-rose-50 text-rose-500" : "bg-emerald-50 text-emerald-600"
+                  )}>{p.stock} Units</div>
                 </div>
               </button>
             ))}
@@ -290,23 +292,29 @@ export default function BillingPage() {
         </div>
 
         {/* Dynamic Growth Bar */}
-        <div className="glass-card p-6 border-l-4 border-emerald-400 bg-emerald-50/30 flex items-center justify-between">
+        <div className="modern-card p-6 border-l-8 border-emerald-500 bg-white flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
-              <TrendingUp className="w-6 h-6 text-emerald-500" />
+            <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center shadow-inner">
+              <TrendingUp className="w-7 h-7 text-emerald-600" />
             </div>
             <div>
-              <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Growth Engine Active</p>
-              <p className="text-xs font-bold text-slate-500">Shop: {tenant?.state || 'Unknown State'} ({isInterState ? 'Inter-state' : 'Intra-state'})</p>
+              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1.5">Intelligent Growth Active</p>
+              <div className="flex items-center gap-2">
+                 <Building className="w-3.5 h-3.5 text-slate-400" />
+                 <p className="text-sm font-bold text-slate-600">{tenant?.state || 'Store Region'} <span className="text-slate-300 mx-1">|</span> {isInterState ? 'Outside State' : 'Home State'}</p>
+              </div>
             </div>
           </div>
           {activeCustomer && (
-            <div className="text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Loyalty Points</p>
-              <div className="flex items-center justify-end gap-2 text-brand">
-                <Gift className="w-4 h-4" />
-                <span className="text-lg font-black">{activeCustomer.loyaltyPoints || 0}</span>
+            <div className="text-right px-6 border-l border-slate-100 flex items-center gap-6">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Loyalty</p>
+                <div className="flex items-center justify-end gap-2 text-indigo-600">
+                  <Gift className="w-4 h-4" />
+                  <span className="text-xl font-black">{activeCustomer.loyaltyPoints || 0}</span>
+                </div>
               </div>
+              <ChevronRight className="w-5 h-5 text-slate-200" />
             </div>
           )}
         </div>
