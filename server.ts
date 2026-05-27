@@ -27,7 +27,31 @@ async function startServer() {
   const app = express();
   const PORT = 3002;
 
-  app.use(cors());
+    app.use(cors({
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        'https://invoflow.xyraco.com',
+        'http://invoflow.xyraco.com'
+      ];
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.run.app') ||
+        /^https?:\/\/localhost(:\d+)?$/.test(origin)
+      ) {
+        callback(null, origin);
+      } else {
+        // Echo back other origins dynamically to support full access and live previews
+        // while maintaining compat with CORS credentials flow
+        callback(null, origin);
+      }
+    },
+    credentials: true
+  }));
+
   app.use(express.json());
 
   // API Routes
