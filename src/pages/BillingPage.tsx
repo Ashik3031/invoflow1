@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Search, Plus, Minus, Trash2, ShoppingCart, User, Loader2, CheckCircle2, MessageSquare, Ticket, Gift, Sparkles, TrendingUp, Building, MapPin, FileBox, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
+import { StoreCreditBanner } from '../components/returns/StoreCreditBanner';
 import { Product, Customer, LoyaltyConfig, Coupon, Bill } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuthStore } from '../store/useAuthStore';
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", 
@@ -13,10 +15,16 @@ const INDIAN_STATES = [
 ];
 
 export default function BillingPage() {
+  const { tenant: authTenant } = useAuthStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
-  const [customer, setCustomer] = useState({ name: '', phone: '', gstin: '', state: 'Karnataka' });
+  const [customer, setCustomer] = useState({ 
+    name: '', 
+    phone: '', 
+    gstin: '', 
+    state: authTenant?.state || 'Karnataka' 
+  });
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig | null>(null);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -30,6 +38,7 @@ export default function BillingPage() {
   
   const [loading, setLoading] = useState(false);
   const [successBill, setSuccessBill] = useState<any>(null);
+  const [applyStoreCredit, setApplyStoreCredit] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -62,11 +71,14 @@ export default function BillingPage() {
       if (found) {
         setActiveCustomer(found);
         setCustomer(prev => ({ ...prev, name: found.name }));
+        setApplyStoreCredit(false);
       } else {
         setActiveCustomer(null);
+        setApplyStoreCredit(false);
       }
     } else {
       setActiveCustomer(null);
+      setApplyStoreCredit(false);
     }
   };
 
@@ -126,7 +138,12 @@ export default function BillingPage() {
   }
 
   const pointValue = redeemPoints * (loyaltyConfig?.valuePerPoint || 0);
-  const grandTotal = Math.max(0, subtotal + totalGst - discountAmount - pointValue);
+  const calculatedBillTotal = Math.max(0, subtotal + totalGst - discountAmount - pointValue);
+
+  // Store Credit Calculus
+  const storeCreditAvailable = activeCustomer?.storeCredit || 0;
+  const creditToApply = applyStoreCredit ? Math.min(storeCreditAvailable, calculatedBillTotal) : 0;
+  const grandTotal = Math.max(0, calculatedBillTotal - creditToApply);
 
   const handleSubmit = async () => {
     if (cart.length === 0) return;
@@ -146,16 +163,18 @@ export default function BillingPage() {
         paymentStatus,
         discountAmount,
         pointsRedeemed: redeemPoints,
-        documentType
+        documentType,
+        storeCreditApplied: creditToApply
       };
       const { data } = await api.post('/billing/create', payload);
       setSuccessBill(data);
       setCart([]);
-      setCustomer({ name: '', phone: '', gstin: '', state: tenant?.state || 'Karnataka' });
+      setCustomer({ name: '', phone: '', gstin: '', state: authTenant?.state || tenant?.state || 'Karnataka' });
       setActiveCustomer(null);
       setSelectedCoupon(null);
       setRedeemPoints(0);
       setIsB2B(false);
+      setApplyStoreCredit(false);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Billing failed');
     } finally {
@@ -358,6 +377,18 @@ export default function BillingPage() {
               </div>
             )}
           </div>
+
+          {/* Store Credit Banner Alert */}
+          {activeCustomer && (activeCustomer.storeCredit || 0) > 0 && (
+            <div className="px-6 py-4 bg-white border-t border-slate-100">
+              <StoreCreditBanner
+                creditAmount={activeCustomer.storeCredit || 0}
+                customerName={activeCustomer.name}
+                applyStoreCredit={applyStoreCredit}
+                setApplyStoreCredit={setApplyStoreCredit}
+              />
+            </div>
+          )}
 
           {/* Customer & GST Details */}
           <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">

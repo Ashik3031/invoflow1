@@ -6,8 +6,8 @@ import { motion } from 'motion/react';
 export default function ReportsPage() {
   const reports = [
     {
-      title: 'Daily Sales',
-      desc: 'Day-wise revenue and bill count summary.',
+      title: 'Sales Report',
+      desc: 'Track and analyze sales grouped by day, week, or month, with custom date queries.',
       to: '/reports/sales-daily',
       icon: TrendingUp,
       color: 'bg-indigo-50 text-indigo-600',

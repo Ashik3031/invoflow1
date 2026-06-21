@@ -2,6 +2,7 @@ import express from 'express';
 import { CustomerModel, BillModel } from '../db.js';
 import { nanoid } from 'nanoid';
 import { AuthRequest } from '../middleware/auth.js';
+import { createNotification } from './notification-service.js';
 
 const router = express.Router();
 
@@ -44,6 +45,14 @@ router.post('/create', async (req: AuthRequest, res) => {
   };
 
   const customer = await CustomerModel.create(newCustomer);
+
+  await createNotification(
+    req.user!.tenantId,
+    'New Customer Registered',
+    `Customer "${customer.name}" (${customer.phone}) has been registered.`,
+    'customer'
+  );
+
   res.json(customer);
 });
 

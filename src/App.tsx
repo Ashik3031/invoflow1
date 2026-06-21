@@ -37,6 +37,12 @@ import POSPage from './pages/POSPage';
 import GSTPage from './pages/GSTPage';
 import PublicStorePage from './pages/PublicStorePage';
 import SettingsPage from './pages/SettingsPage';
+import ReturnsPage from './pages/returns/index';
+import CreateReturnPage from './pages/returns/create';
+import ReturnsAnalyticsPage from './pages/returns/analytics';
+import StaffDirectoryPage from './pages/staff/StaffDirectoryPage';
+import StaffAttendancePage from './pages/staff/StaffAttendancePage';
+import StaffPayrollPage from './pages/staff/StaffPayrollPage';
 import { useAuthStore } from './store/useAuthStore';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -76,7 +82,10 @@ export default function App() {
                   <Route path="/marketing" element={<MarketingPage />} />
                   <Route path="/estimates" element={<EstimatesPage />} />
                   <Route path="/challans" element={<ChallansPage />} />
-                  <Route path="/credit-notes" element={<CreditNotesPage />} />
+                  <Route path="/credit-notes" element={<ReturnsPage />} />
+                  <Route path="/returns" element={<ReturnsPage />} />
+                  <Route path="/returns/create" element={<CreateReturnPage />} />
+                  <Route path="/returns/analytics" element={<ReturnsAnalyticsPage />} />
                   <Route path="/cash" element={<CashBookPage />} />
                   <Route path="/banks" element={<BanksPage />} />
                   <Route path="/outstanding" element={<OutstandingPage />} />
@@ -91,6 +100,9 @@ export default function App() {
                   <Route path="/reports/valuation" element={<ValuationReportPage />} />
                   <Route path="/reports/loyalty" element={<LoyaltyReportPage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
+                  <Route path="/staff" element={<StaffDirectoryPage />} />
+                  <Route path="/staff/attendance" element={<StaffAttendancePage />} />
+                  <Route path="/staff/payroll" element={<StaffPayrollPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Routes>
               </Layout>

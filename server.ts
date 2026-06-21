@@ -17,17 +17,22 @@ import reportsService from './server/services/reports-service.js';
 import backupService from './server/services/backup-service.js';
 import storeService from './server/services/store-service.js';
 import gstService from './server/services/gst-service.js';
+import notificationService from './server/services/notification-service.js';
+import staffService from './server/services/staff-service.js';
 import { authenticateToken } from './server/middleware/auth.js';
 import { connectToDatabase } from './server/db.js';
 
 dotenv.config();
 
 async function startServer() {
-  await connectToDatabase();
+  // Connect to database in the background to prevent blocking port binding and avoid Network Errors during boot
+  connectToDatabase().catch((err) => {
+    console.error('Initial database connection failure:', err);
+  });
   const app = express();
-  const PORT = 3002;
+  const PORT = 3000;
 
-    app.use(cors({
+  app.use(cors({
     origin: (origin, callback) => {
       const allowedOrigins = [
         'https://invoflow.xyraco.com',
@@ -51,7 +56,6 @@ async function startServer() {
     },
     credentials: true
   }));
-
   app.use(express.json());
 
   // API Routes
@@ -67,6 +71,8 @@ async function startServer() {
   app.use('/api/accounts', authenticateToken as any, accountsService);
   app.use('/api/reports', authenticateToken as any, reportsService);
   app.use('/api/gst', authenticateToken as any, gstService);
+  app.use('/api/notifications', authenticateToken as any, notificationService);
+  app.use('/api/staff', authenticateToken as any, staffService);
   app.use('/api/backup', authenticateToken as any, backupService);
   app.use('/api/store', storeService);
 

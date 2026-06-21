@@ -5,25 +5,52 @@ import { useAuthStore } from '../store/useAuthStore';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
 
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", 
+  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", 
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", 
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
+];
+
 export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [saved, setSaved] = useState(false);
-  const { tenant } = useAuthStore();
+  const { tenant, updateTenant } = useAuthStore();
   
   const [settings, setSettings] = useState({
     shopName: tenant?.shopName || '',
     slug: tenant?.slug || '',
     gstin: tenant?.gstin || '',
-    state: tenant?.state || '',
+    state: tenant?.state || 'Karnataka',
     businessType: tenant?.businessType || 'B2C'
   });
+
+  useEffect(() => {
+    const fetchLatestSettings = async () => {
+      try {
+        const { data } = await api.get('/settings/tenant');
+        setSettings({
+          shopName: data.shopName || '',
+          slug: data.slug || '',
+          gstin: data.gstin || '',
+          state: data.state || 'Karnataka',
+          businessType: data.businessType || 'B2C'
+        });
+        updateTenant(data);
+      } catch (err) {
+        console.error('Failed to load latest tenant settings:', err);
+      }
+    };
+    fetchLatestSettings();
+  }, [updateTenant]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.put('/settings/tenant', settings);
+      const { data } = await api.put('/settings/tenant', settings);
+      updateTenant(data);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -130,12 +157,15 @@ export default function SettingsPage() {
                      </div>
                      <div>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Business State</label>
-                        <input 
-                           type="text" 
+                        <select 
                            value={settings.state}
                            onChange={e => setSettings({...settings, state: e.target.value})}
-                           className="input-base w-full h-14" 
-                        />
+                           className="input-base w-full h-14 bg-white px-4" 
+                        >
+                           {INDIAN_STATES.map((st) => (
+                              <option key={st} value={st}>{st}</option>
+                           ))}
+                        </select>
                      </div>
                   </div>
 

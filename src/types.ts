@@ -25,6 +25,7 @@ export interface Customer {
   totalOrders: number;
   lastPurchaseDate?: string;
   loyaltyPoints: number;
+  storeCredit?: number;
 }
 
 export interface LoyaltyConfig {
@@ -72,7 +73,7 @@ export interface Bill {
   totalAmount: number;
   discountAmount: number;
   pointsRedeemed: number;
-  paymentStatus: 'paid' | 'partial' | 'unpaid';
+  paymentStatus: 'paid' | 'partial' | 'unpaid' | 'refunded';
   payments: BillPayment[];
   createdAt: string;
   documentType: 'invoice' | 'estimate' | 'credit_note' | 'challan';
@@ -88,6 +89,16 @@ export interface Bill {
   subTotal: number;
   linkedBillId?: string;
   convertedToInvoice?: boolean;
+  linkedBillNumber?: string;
+  returnType?: 'full_return' | 'partial_return' | 'exchange';
+  returnReason?: string;
+  returnReasonNote?: string;
+  exchangeItems?: any[];
+  refundAmount?: number;
+  collectAmount?: number;
+  balanceType?: 'refund_to_customer' | 'collect_from_customer' | 'even';
+  refundMode?: string;
+  refundNote?: string;
 }
 
 export interface Supplier {
@@ -184,5 +195,16 @@ export interface DashboardData {
   pendingPayments: number;
   lowStockItems: number;
   bestCustomers?: Customer[];
-  topProducts?: { name: string, quantity: number, revenue: number }[];
+  topProducts?: { 
+    id: string;
+    name: string; 
+    quantitySold: number; 
+    revenue: number; 
+    stock: number; 
+    category: string;
+  }[];
+  todayUnitsSold?: number;
+  totalInventoryCount?: number;
+  totalCustomersCount?: number;
+  chartData?: { name: string; value: number; expense: number }[];
 }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { 
   ShoppingBag, FileText, IndianRupee, TrendingUp, Users, Crown, Zap, Target, 
-  ArrowUpRight, ArrowDownRight, Calendar, Search, Filter, Plus, ChevronRight
+  ArrowUpRight, ArrowDownRight, Calendar, Search, Filter, Plus, ChevronRight,
+  Bell, BellOff, Check, Trash2, AlertTriangle, UserPlus, Info, Wallet, Truck
 } from 'lucide-react';
 import api from '../lib/api';
 import { DashboardData } from '../types';
@@ -13,46 +14,76 @@ import {
 } from 'recharts';
 
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../store/useAuthStore';
+import { useNotificationStore, playNotificationSound } from '../store/useNotificationStore';
 
 const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#6366F1', '#8B5CF6'];
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [data, setData] = useState<DashboardData | null>(null);
   const [gstSummary, setGstSummary] = useState<any>(null);
   const [pnl, setPnl] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const { notifications, markAsRead, clearAll } = useNotificationStore();
+  const safeNotifications = Array.isArray(notifications) ? notifications : [];
+
+  // Dynamic filter state variables
+  const [performanceRange, setPerformanceRange] = useState('this_month');
+  const [revenueView, setRevenueView] = useState<'day' | 'month' | 'year'>('day');
+  
+  // Custom date selection
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
   useEffect(() => {
     fetchDashboard();
-  }, []);
+  }, [performanceRange, revenueView, startDate, endDate]);
 
   const fetchDashboard = async () => {
-    try {
-      const now = new Date();
-      const [dRes, gRes, pRes] = await Promise.all([
-        api.get('/billing/dashboard'),
-        api.get('/billing/gst-summary', { params: { month: now.getMonth() + 1, year: now.getFullYear() } }),
-        api.get('/accounts/profit-loss', { params: { from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0] } })
-      ]);
-      setData(dRes.data);
-      setGstSummary(gRes.data);
-      setPnl(pRes.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+     setRefreshing(true);
+     try {
+       const now = new Date();
+       const [dRes, gRes, pRes] = await Promise.all([
+         api.get('/billing/dashboard', {
+           params: {
+             performanceRange,
+             revenueView,
+             startDate,
+             endDate
+           }
+         }),
+         api.get('/billing/gst-summary', { params: { month: now.getMonth() + 1, year: now.getFullYear() } }),
+         api.get('/accounts/profit-loss', { params: { from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0] } })
+       ]);
+       setData(dRes.data);
+       setGstSummary(gRes.data);
+       setPnl(pRes.data);
+     } catch (err) {
+       console.error(err);
+     } finally {
+       setInitialLoading(false);
+       setRefreshing(false);
+     }
   };
 
-  const chartData = [
-    { name: 'Mon', value: 4000 },
-    { name: 'Tue', value: 3000 },
-    { name: 'Wed', value: 2000 },
-    { name: 'Thu', value: 2780 },
-    { name: 'Fri', value: 1890 },
-    { name: 'Sat', value: 2390 },
-    { name: 'Sun', value: 3490 },
+  const chartData = data?.chartData || [
+    { name: 'Mon', value: 0, expense: 0 },
+    { name: 'Tue', value: 0, expense: 0 },
+    { name: 'Wed', value: 0, expense: 0 },
+    { name: 'Thu', value: 0, expense: 0 },
+    { name: 'Fri', value: 0, expense: 0 },
+    { name: 'Sat', value: 0, expense: 0 },
+    { name: 'Sun', value: 0, expense: 0 },
   ];
 
   const pieData = (data?.topProducts || []).map((p, i) => ({
@@ -60,8 +91,8 @@ export default function DashboardPage() {
     value: p.revenue
   })).slice(0, 5);
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center h-full gap-4">
+  if (initialLoading) return (
+    <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
       <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
       <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Aggregating Business Intelligence...</p>
     </div>
@@ -69,38 +100,40 @@ export default function DashboardPage() {
 
   const stats = [
     { 
-      label: "Total Earnings", 
+      label: "Today's Sales", 
       value: formatCurrency(data?.todaySales || 0), 
-      trend: "+11%", 
-      isUp: true, 
-      desc: "This Week",
-      subValue: "₹ 234,189 Total"
+      trend: data?.todayBillCount ? `${data.todayBillCount} Invoices` : "0 Invoices", 
+      isUp: (data?.todaySales || 0) > 0, 
+      desc: "Processed Today",
+      subValue: `Gross Revenue: ${formatCurrency(gstSummary?.totalSales || pnl?.revenue || 0)}`
     },
     { 
-      label: "Products Sold", 
-      value: "360.00", 
-      trend: "+5%", 
-      isUp: true, 
-      desc: "Units Issued",
-      subValue: "3,200 Inventory"
+      label: "Units Sold Today", 
+      value: data?.todayUnitsSold ? `${data.todayUnitsSold.toLocaleString()} Units` : "0 Units", 
+      trend: `${data?.lowStockItems || 0} Low Stock`, 
+      isUp: (data?.lowStockItems || 0) === 0, 
+      desc: "Low Stock Products",
+      subValue: `${data?.totalInventoryCount || 0} Products in Inventory`
     },
     { 
-      label: "Active Leads", 
-      value: "1,258", 
-      trend: "+20%", 
-      isUp: true, 
-      desc: "This Week",
-      subValue: "Customer Growth"
+      label: "Unpaid / Pending", 
+      value: data?.pendingPayments ? `${data.pendingPayments} Bills` : "0 Bills", 
+      trend: "Pending Payment", 
+      isUp: false, 
+      desc: "Outstanding Sales",
+      subValue: "Requires Follow-Up"
     },
     { 
-      label: "Total Clients", 
-      value: "320.00", 
-      trend: "+11%", 
+      label: "Total Customers", 
+      value: data?.totalCustomersCount ? `${data.totalCustomersCount.toLocaleString()}` : "0", 
+      trend: "Registered", 
       isUp: true, 
-      desc: "This Week",
-      subValue: "Returning Users"
+      desc: "Growing Client Base",
+      subValue: "Loyal & Returning"
     },
   ];
+
+  const todayStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
     <div className="space-y-8 pb-12">
@@ -117,12 +150,12 @@ export default function DashboardPage() {
          
          <div className="relative z-10 flex items-start justify-between">
             <div>
-               <h2 className="text-4xl font-extrabold text-white mb-2">Welcome back, Ashik!</h2>
-               <p className="text-indigo-100/70 font-medium">Here's your property summary for today.</p>
+               <h2 className="text-4xl font-extrabold text-white mb-2">Welcome back, {user?.name || 'User'}!</h2>
+               <p className="text-indigo-100/70 font-medium">Here's your sales summary for today.</p>
             </div>
             <div className="bg-white/10 backdrop-blur-md px-5 py-2.5 rounded-2xl flex items-center gap-3 text-white border border-white/10">
                <Calendar className="w-4 h-4" />
-               <span className="text-sm font-semibold tracking-tight">01 Nov 2025 - 31 Dec 2026</span>
+               <span className="text-sm font-semibold tracking-tight">{todayStr}</span>
             </div>
          </div>
 
@@ -158,10 +191,19 @@ export default function DashboardPage() {
          {/* Sales Performance (Pie/Doughnut) */}
          <div className="modern-card">
             <div className="flex items-center justify-between mb-8">
-               <h3 className="font-bold text-slate-800">Sales Performance</h3>
-               <select className="bg-slate-50 border-none text-[11px] font-bold uppercase tracking-widest rounded-lg px-2 py-1 outline-none">
-                  <option>Last month</option>
-                  <option>This month</option>
+               <div className="flex items-center gap-2">
+                 <h3 className="font-bold text-slate-800">Sales Performance</h3>
+                 {refreshing && <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>}
+               </div>
+               <select 
+                 value={performanceRange}
+                 onChange={(e) => setPerformanceRange(e.target.value)}
+                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold border-none text-[11px] uppercase tracking-widest rounded-xl px-2.5 py-1.5 outline-none transition-colors cursor-pointer"
+               >
+                  <option value="this_month">This month</option>
+                  <option value="last_month">Last month</option>
+                  <option value="this_week">This week</option>
+                  <option value="all_time">All time</option>
                </select>
             </div>
             <div className="h-64 relative">
@@ -184,42 +226,99 @@ export default function DashboardPage() {
                   </PieChart>
                </ResponsiveContainer>
                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <p className="text-3xl font-black text-slate-800">₹360k</p>
+                  <p className="text-xl font-black text-slate-800">{formatCurrency(pnl?.revenue || 0)}</p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Revenue</p>
                </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mt-6 border-t border-slate-50 pt-6">
-               <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#4F46E5]" />
-                  <div className="flex-1">
-                     <p className="text-xs font-bold text-slate-400">Profit</p>
-                     <p className="text-sm font-black text-slate-800">$300k</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-6 border-t border-slate-50 pt-6">
+               {pieData.map((p, idx) => (
+                  <div key={idx} className="flex items-center gap-2 min-w-0">
+                     <div 
+                        className="w-2 rounded-full h-2 shrink-0" 
+                        style={{ backgroundColor: COLORS[idx % COLORS.length] }} 
+                     />
+                     <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold text-slate-500 truncate" title={p.name}>{p.name}</p>
+                        <p className="text-xs font-black text-slate-800">{formatCurrency(p.value)}</p>
+                     </div>
                   </div>
-               </div>
-               <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
-                  <div className="flex-1">
-                     <p className="text-xs font-bold text-slate-400">Expense</p>
-                     <p className="text-sm font-black text-slate-800">$60k</p>
+               ))}
+               {pieData.length === 0 && (
+                  <div className="col-span-2 text-center text-xs font-bold text-slate-300 uppercase tracking-widest py-4">
+                     No sales recorded yet
                   </div>
-               </div>
+               )}
             </div>
          </div>
 
          {/* Revenue Updates (Bar Chart) */}
          <div className="lg:col-span-2 modern-card shadow-soft">
-            <div className="flex items-center justify-between mb-8">
-               <h3 className="font-bold text-slate-800">Revenue Updates</h3>
-               <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+               <div>
                   <div className="flex items-center gap-2">
-                     <div className="w-3 h-3 bg-indigo-600 rounded-full" />
-                     <span className="text-xs font-bold text-slate-500">Gross Sale</span>
+                    <h3 className="font-bold text-slate-800">Revenue Updates</h3>
+                    {refreshing && <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>}
                   </div>
-                  <div className="flex items-center gap-2">
-                     <div className="w-3 h-3 bg-indigo-100 rounded-full" />
-                     <span className="text-xs font-bold text-slate-500">Expense</span>
+                  <p className="text-xs text-slate-400 mt-1">Sales revenue vs business expenses</p>
+               </div>
+               
+               <div className="flex flex-wrap items-center gap-4">
+                  {/* View Presets Group */}
+                  <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1">
+                     {(['day', 'month', 'year'] as const).map((view) => (
+                        <button
+                           key={view}
+                           onClick={() => setRevenueView(view)}
+                           className={cn(
+                              "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                              revenueView === view ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                           )}
+                        >
+                           {view}
+                        </button>
+                     ))}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                     <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />
+                        <span className="text-[11px] font-bold text-slate-500">Gross Sale</span>
+                     </div>
+                     <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 bg-indigo-200 rounded-full" />
+                        <span className="text-[11px] font-bold text-slate-500">Expense</span>
+                     </div>
                   </div>
                </div>
             </div>
+
+            {/* Dynamic Date Pickers if 'day' is selected */}
+            {revenueView === 'day' && (
+               <div className="flex flex-wrap items-center gap-4 mb-6 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                  <div className="flex items-center gap-2">
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">From:</span>
+                     <input 
+                        type="date" 
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+                     />
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">To:</span>
+                     <input 
+                        type="date" 
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+                     />
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold ml-auto uppercase tracking-wider">
+                     Showing day trends
+                  </p>
+               </div>
+            )}
+
             <div className="h-72">
                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData}>
@@ -239,10 +338,125 @@ export default function DashboardPage() {
                      <Tooltip 
                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                      />
-                     <Bar dataKey="value" fill="#6366F1" radius={[6, 6, 0, 0]} barSize={24} />
+                     <Bar dataKey="value" name="Gross Sale" fill="#4F46E5" radius={[6, 6, 0, 0]} barSize={16} />
+                     <Bar dataKey="expense" name="Expense" fill="#C7D2FE" radius={[6, 6, 0, 0]} barSize={16} />
                   </BarChart>
                </ResponsiveContainer>
             </div>
+         </div>
+      </div>
+
+      {/* Notifications & Recent Activity Feed */}
+      <div className="modern-card p-6 border border-slate-100">
+         <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
+            <div>
+               <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-indigo-600 animate-bounce" />
+                  Live Dashboard Alerts Feed
+               </h3>
+               <p className="text-xs text-slate-400 mt-1">Real-time business activity updates and stock alerts</p>
+            </div>
+            
+            <div className="flex items-center gap-2.5">
+               <button 
+                  onClick={() => playNotificationSound()}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer inline-flex items-center gap-1.5 active:scale-95"
+               >
+                  <Bell className="w-3.5 h-3.5" />
+                  Test Chime Sound
+               </button>
+               {safeNotifications.length > 0 && (
+                  <button 
+                     onClick={() => clearAll()}
+                     className="bg-rose-50 hover:bg-rose-100 text-rose-650 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer inline-flex items-center gap-1 active:scale-95"
+                  >
+                     <Trash2 className="w-3.5 h-3.5" /> Clear Feed
+                  </button>
+               )}
+            </div>
+         </div>
+
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[360px] overflow-y-auto pr-1">
+            {safeNotifications.length === 0 ? (
+               <div className="col-span-full py-16 text-center text-slate-300 italic text-[10px] font-black uppercase tracking-widest">
+                  <BellOff className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  No live dashboard alerts generated yet
+               </div>
+            ) : (
+               safeNotifications.slice(0, 9).map((n) => {
+                  let IconComponent = Info;
+                  let iconBg = 'bg-slate-50 text-slate-500 border border-slate-100';
+                  let borderStyle = 'border-slate-100';
+                  
+                  if (n.type === 'sale') {
+                     IconComponent = ShoppingBag;
+                     iconBg = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+                     borderStyle = 'border-emerald-100/30';
+                  } else if (n.type === 'expense') {
+                     IconComponent = Wallet;
+                     iconBg = 'bg-rose-50 text-rose-600 border border-rose-100';
+                     borderStyle = 'border-rose-100/30';
+                  } else if (n.type === 'purchase') {
+                     IconComponent = Truck;
+                     iconBg = 'bg-amber-50 text-amber-600 border border-amber-100';
+                     borderStyle = 'border-amber-100/30';
+                  } else if (n.type === 'low_stock') {
+                     IconComponent = AlertTriangle;
+                     iconBg = 'bg-rose-100 text-rose-700 border border-rose-200';
+                     borderStyle = 'border-rose-200/40';
+                  } else if (n.type === 'customer') {
+                     IconComponent = UserPlus;
+                     iconBg = 'bg-indigo-50 text-indigo-600 border border-indigo-100';
+                     borderStyle = 'border-indigo-100/30';
+                  }
+
+                  return (
+                     <div 
+                        key={n.id}
+                        className={cn(
+                           "flex gap-3.5 p-4 rounded-2xl border transition-all duration-200 hover:shadow-sm relative overflow-hidden",
+                           borderStyle,
+                           !n.read ? "bg-indigo-50/10 shadow-sm" : "bg-white"
+                        )}
+                     >
+                        {!n.read && (
+                           <span className="absolute top-3 right-3 w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce" />
+                        )}
+                        
+                        <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm", iconBg)}>
+                           <IconComponent className="w-4 h-4" />
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                           <div className="flex items-center gap-1.5">
+                              <span className="text-[8px] font-black uppercase text-slate-400 tracking-wider">
+                                 {n.type}
+                              </span>
+                              <span className="text-[8px] text-slate-350">•</span>
+                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                                 {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                           </div>
+                           <h4 className={cn("text-xs leading-snug mt-1 text-slate-800", !n.read ? "font-bold" : "font-semibold")}>
+                              {n.title}
+                           </h4>
+                           <p className="text-[10px] text-slate-500 mt-1 leading-relaxed break-words">
+                              {n.message}
+                           </p>
+                           
+                           {!n.read && (
+                              <button 
+                                 onClick={() => markAsRead(n.id)}
+                                 className="mt-3 bg-indigo-50 hover:bg-indigo-100 text-[#4F46E5] px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer inline-flex items-center gap-1 active:scale-95"
+                              >
+                                 <Check className="w-3 h-3" /> Mark Read
+                              </button>
+                           )}
+                        </div>
+                     </div>
+                  );
+               })
+            )}
          </div>
       </div>
 
@@ -279,22 +493,24 @@ export default function DashboardPage() {
                   </tr>
                </thead>
                <tbody className="divide-y divide-slate-50">
-                  {(data?.topProducts || []).slice(0, 5).map((p, i) => (
-                     <tr key={i} className="hover:bg-slate-50 transition-colors group">
-                        <td className="px-8 py-4 text-xs font-bold text-slate-400 tracking-tight">PR-{1023 + i}</td>
-                        <td className="px-8 py-4">
-                           <p className="text-sm font-bold text-slate-800">{p.name}</p>
-                        </td>
-                        <td className="px-8 py-4 text-sm font-medium text-slate-500">Retail</td>
-                        <td className="px-8 py-4 text-sm font-bold font-mono">{p.quantity} Units</td>
-                        <td className="px-8 py-4 text-sm font-black text-indigo-600">₹{p.revenue.toLocaleString()}</td>
-                        <td className="px-8 py-4">
-                           <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest", p.quantity > 20 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600")}>
-                              {p.quantity > 10 ? 'Available' : 'Low Stock'}
-                           </span>
-                        </td>
-                     </tr>
-                  )) || (
+                  {data?.topProducts && data.topProducts.length > 0 ? (
+                     data.topProducts.slice(0, 5).map((p, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors group">
+                           <td className="px-8 py-4 text-xs font-bold text-slate-400 tracking-tight">PR-{(p.id || '').slice(0, 4).toUpperCase()}</td>
+                           <td className="px-8 py-4">
+                              <p className="text-sm font-bold text-slate-800">{p.name}</p>
+                           </td>
+                           <td className="px-8 py-4 text-sm font-medium text-slate-500">{p.category || 'General'}</td>
+                           <td className="px-8 py-4 text-sm font-bold font-mono">{p.stock || 0} Units</td>
+                           <td className="px-8 py-4 text-sm font-black text-indigo-600">{formatCurrency(p.revenue || 0)}</td>
+                           <td className="px-8 py-4">
+                              <span className={cn("px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest", (p.stock || 0) > 10 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600")}>
+                                 {(p.stock || 0) > 10 ? 'Available' : 'Low Stock'}
+                              </span>
+                           </td>
+                        </tr>
+                     ))
+                  ) : (
                      <tr><td colSpan={6} className="px-8 py-20 text-center text-slate-300 font-bold uppercase tracking-widest">No detailed records found</td></tr>
                   )}
                </tbody>

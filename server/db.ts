@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+mongoose.set('bufferCommands', false);
+
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ashikash202_db_user:CHTI9n41W2DJsYhC@cluster0.oes6jcf.mongodb.net/lite-billing?appName=Cluster0';
 
 let isConnected = false;
@@ -34,10 +36,8 @@ export async function connectToDatabase() {
     }
     
     // Don't throw here to allow the server to at least start, 
-    // although DB operations will fail.
-    // Or throw if we want to fail fast. 
-    // Given the context, failing fast is better so the user sees the logs immediately.
-    throw error;
+    // and let Mongoose automatically retry in the background.
+    console.error('Mongoose connection failed initially. App server is starting anyway; Mongoose will automatically retry connecting in the background.');
   }
 }
 
@@ -86,6 +86,7 @@ export interface Customer {
   totalOrders: number;
   lastPurchaseDate?: string;
   loyaltyPoints: number;
+  storeCredit?: number;
 }
 
 export interface LoyaltyConfig {
@@ -135,7 +136,7 @@ export interface Bill {
   totalAmount: number;
   discountAmount: number;
   pointsRedeemed: number;
-  paymentStatus: 'paid' | 'partial' | 'unpaid';
+  paymentStatus: 'paid' | 'partial' | 'unpaid' | 'refunded';
   payments: BillPayment[];
   tenantId: string;
   createdAt: string;
@@ -152,6 +153,27 @@ export interface Bill {
   subTotal: number;
   linkedBillId?: string;
   convertedToInvoice?: boolean;
+  
+  // Return / exchange fields (only populated when documentType === 'credit_note')
+  returnType?: 'full_return' | 'partial_return' | 'exchange' | null;
+  linkedBillNumber?: string | null;
+  returnReason?: 'damaged' | 'wrong_item' | 'customer_changed_mind' | 'quality_issue' | 'expired' | 'other' | null;
+  returnReasonNote?: string;
+  exchangeItems?: {
+    productId: string;
+    productName: string;
+    quantity: number;
+    price: number;
+    gstRate: number;
+    gstAmount: number;
+    lineTotal: number;
+  }[];
+  refundAmount?: number;
+  collectAmount?: number;
+  balanceType?: 'refund_to_customer' | 'collect_from_customer' | 'even' | null;
+  refundMode?: 'cash' | 'upi' | 'store_credit' | 'bank_transfer' | null;
+  refundNote?: string;
+  processedBy?: string;
 }
 
 export interface Supplier {
@@ -259,6 +281,29 @@ export interface Payment {
   tenantId: string;
 }
 
+export interface AppNotification {
+  id: string;
+  tenantId: string;
+  title: string;
+  message: string;
+  type: 'sale' | 'low_stock' | 'payment' | 'expense' | 'purchase' | 'customer' | 'general';
+  read: boolean;
+  createdAt: string;
+}
+
+export interface ReturnLog {
+  id: string;
+  creditNoteId: string;
+  originalBillId: string;
+  productId: string;
+  productName: string;
+  quantityReturned: number;
+  returnReason: string;
+  returnType: 'full_return' | 'partial_return' | 'exchange';
+  returnDate: string;
+  tenantId: string;
+}
+
 // Mongoose Schemas
 const UserSchema = new Schema<User>({
   id: { type: String, required: true, unique: true },
@@ -302,7 +347,8 @@ const CustomerSchema = new Schema<Customer>({
   totalSpent: { type: Number, default: 0 },
   totalOrders: { type: Number, default: 0 },
   lastPurchaseDate: String,
-  loyaltyPoints: { type: Number, default: 0 }
+  loyaltyPoints: { type: Number, default: 0 },
+  storeCredit: { type: Number, default: 0 }
 });
 
 const BillSchema = new Schema<Bill>({
@@ -324,7 +370,7 @@ const BillSchema = new Schema<Bill>({
   totalAmount: Number,
   discountAmount: { type: Number, default: 0 },
   pointsRedeemed: { type: Number, default: 0 },
-  paymentStatus: { type: String, enum: ['paid', 'partial', 'unpaid'] },
+  paymentStatus: { type: String, enum: ['paid', 'partial', 'unpaid', 'refunded'] },
   payments: [{
     mode: String,
     amount: Number,
@@ -345,7 +391,46 @@ const BillSchema = new Schema<Bill>({
   },
   subTotal: Number,
   linkedBillId: String,
-  convertedToInvoice: Boolean
+  convertedToInvoice: Boolean,
+
+  // Return / exchange fields (only populated when documentType === 'credit_note')
+  returnType: {
+    type: String,
+    enum: ['full_return', 'partial_return', 'exchange', null],
+    default: null
+  },
+  linkedBillNumber: { type: String, default: null },
+  returnReason: {
+    type: String,
+    enum: ['damaged', 'wrong_item', 'customer_changed_mind', 'quality_issue', 'expired', 'other', null],
+    default: null
+  },
+  returnReasonNote: { type: String, default: '' },
+  exchangeItems: [
+    {
+      productId: String,
+      productName: String,
+      quantity: Number,
+      price: Number,
+      gstRate: Number,
+      gstAmount: Number,
+      lineTotal: Number
+    }
+  ],
+  refundAmount: { type: Number, default: 0 },
+  collectAmount: { type: Number, default: 0 },
+  balanceType: {
+    type: String,
+    enum: ['refund_to_customer', 'collect_from_customer', 'even', null],
+    default: null
+  },
+  refundMode: {
+    type: String,
+    enum: ['cash', 'upi', 'store_credit', 'bank_transfer', null],
+    default: null
+  },
+  refundNote: { type: String, default: '' },
+  processedBy: String
 });
 
 const LoyaltyConfigSchema = new Schema<LoyaltyConfig>({
@@ -470,6 +555,165 @@ const PaymentSchema = new Schema<Payment>({
   tenantId: { type: String, required: true }
 });
 
+const NotificationSchema = new Schema<AppNotification>({
+  id: { type: String, required: true, unique: true },
+  tenantId: { type: String, required: true },
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  type: { type: String, required: true, enum: ['sale', 'low_stock', 'payment', 'expense', 'purchase', 'customer', 'general'] },
+  read: { type: Boolean, default: false },
+  createdAt: { type: String, required: true }
+});
+
+const ReturnLogSchema = new Schema<ReturnLog>({
+  id: { type: String, required: true, unique: true },
+  creditNoteId: { type: String, required: true },
+  originalBillId: { type: String, required: true },
+  productId: { type: String, required: true },
+  productName: { type: String, required: true },
+  quantityReturned: { type: Number, required: true },
+  returnReason: { type: String, required: true },
+  returnType: { type: String, required: true, enum: ['full_return', 'partial_return', 'exchange'] },
+  returnDate: { type: String, required: true },
+  tenantId: { type: String, required: true }
+});
+
+// Staff Interfaces
+export interface Staff {
+  name: string;
+  phone: string;
+  role: string;
+  salaryType: 'monthly' | 'daily';
+  monthlySalary: number;
+  dailyWage: number;
+  joiningDate: Date;
+  status: 'active' | 'inactive';
+  bankDetails?: {
+    accountNumber?: string;
+    ifsc?: string;
+    upiId?: string;
+  };
+  tenantId: string;
+  createdAt?: Date;
+}
+
+export interface Attendance {
+  staffId: mongoose.Types.ObjectId | string;
+  date: Date;
+  status: 'present' | 'absent' | 'half_day' | 'paid_leave';
+  markedBy?: string;
+  note?: string;
+  tenantId: string;
+}
+
+export interface Advance {
+  staffId: mongoose.Types.ObjectId | string;
+  amount: number;
+  date: Date;
+  note?: string;
+  deductedInPayrollRun?: mongoose.Types.ObjectId | string | null;
+  tenantId: string;
+}
+
+export interface PayrollEntry {
+  staffId: mongoose.Types.ObjectId | string;
+  staffName: string;
+  role: string;
+  salaryType: string;
+  baseSalary: number;
+  presentDays: number;
+  absentDays: number;
+  halfDays: number;
+  paidLeaveDays: number;
+  totalWorkingDays: number;
+  payableDays: number;
+  grossSalary: number;
+  advanceDeducted: number;
+  netSalary: number;
+  paymentMode: 'cash' | 'bank_transfer' | 'upi';
+  paymentStatus: 'pending' | 'paid';
+  slipSentAt?: Date | null;
+}
+
+export interface PayrollRun {
+  month: number;
+  year: number;
+  runDate: Date;
+  status: 'draft' | 'finalized';
+  entries: PayrollEntry[];
+  totalPayout: number;
+  tenantId: string;
+}
+
+// Staff Schemas
+const StaffSchema = new Schema<Staff>({
+  name: { type: String, required: true },
+  phone: { type: String, required: true },
+  role: { type: String, default: 'General Staff' },
+  salaryType: { type: String, enum: ['monthly', 'daily'], default: 'monthly' },
+  monthlySalary: { type: Number, default: 0 },
+  dailyWage: { type: Number, default: 0 },
+  joiningDate: { type: Date, default: Date.now },
+  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+  bankDetails: {
+    accountNumber: { type: String },
+    ifsc: { type: String },
+    upiId: { type: String }
+  },
+  tenantId: { type: String, required: true, index: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const AttendanceSchema = new Schema<Attendance>({
+  staffId: { type: Schema.Types.ObjectId, ref: 'Staff', required: true },
+  date: { type: Date, required: true },
+  status: { type: String, enum: ['present', 'absent', 'half_day', 'paid_leave'], required: true },
+  markedBy: { type: String },
+  note: { type: String, default: '' },
+  tenantId: { type: String, required: true, index: true }
+});
+
+AttendanceSchema.index({ staffId: 1, date: 1, tenantId: 1 }, { unique: true });
+
+const AdvanceSchema = new Schema<Advance>({
+  staffId: { type: Schema.Types.ObjectId, ref: 'Staff', required: true },
+  amount: { type: Number, required: true },
+  date: { type: Date, default: Date.now },
+  note: { type: String, default: '' },
+  deductedInPayrollRun: { type: Schema.Types.ObjectId, ref: 'PayrollRun', default: null },
+  tenantId: { type: String, required: true, index: true }
+});
+
+const PayrollRunSchema = new Schema<PayrollRun>({
+  month: { type: Number, required: true },
+  year: { type: Number, required: true },
+  runDate: { type: Date, default: Date.now },
+  status: { type: String, enum: ['draft', 'finalized'], default: 'draft' },
+  entries: [
+    {
+      staffId: { type: Schema.Types.ObjectId, ref: 'Staff' },
+      staffName: { type: String },
+      role: { type: String },
+      salaryType: { type: String },
+      baseSalary: { type: Number },
+      presentDays: { type: Number },
+      absentDays: { type: Number },
+      halfDays: { type: Number },
+      paidLeaveDays: { type: Number },
+      totalWorkingDays: { type: Number },
+      payableDays: { type: Number },
+      grossSalary: { type: Number },
+      advanceDeducted: { type: Number, default: 0 },
+      netSalary: { type: Number },
+      paymentMode: { type: String, enum: ['cash', 'bank_transfer', 'upi'], default: 'cash' },
+      paymentStatus: { type: String, enum: ['pending', 'paid'], default: 'pending' },
+      slipSentAt: { type: Date, default: null }
+    }
+  ],
+  totalPayout: { type: Number },
+  tenantId: { type: String, required: true, index: true }
+});
+
 // Models
 export const UserModel = model('User', UserSchema);
 export const TenantModel = model('Tenant', TenantSchema);
@@ -486,6 +730,12 @@ export const BankAccountModel = model('BankAccount', BankAccountSchema);
 export const BankTransactionModel = model('BankTransaction', BankTransactionSchema);
 export const PaymentModel = model('Payment', PaymentSchema);
 export const ReminderLogModel = model('ReminderLog', ReminderLogSchema);
+export const NotificationModel = model('Notification', NotificationSchema);
+export const ReturnLogModel = model('ReturnLog', ReturnLogSchema);
+export const StaffModel = model('Staff', StaffSchema);
+export const AttendanceModel = model('Attendance', AttendanceSchema);
+export const AdvanceModel = model('Advance', AdvanceSchema);
+export const PayrollRunModel = model('PayrollRun', PayrollRunSchema);
 
 // Compat Layer for existing services that expect a "Data" object
 // NOTE: This is a heavy operation if done literally. 

@@ -20,31 +20,170 @@ const isInRange = (dateStr: string, from?: string, to?: string) => {
   return true;
 };
 
-// Report 1: Daily Sales Summary
+// Report 1: Daily/Weekly/Monthly Sales Summary
 router.get('/sales-daily', async (req: AuthRequest, res) => {
   const { tenantId } = req.user!;
-  const { from, to } = req.query as { from?: string; to?: string };
+  const { from, to, groupBy = 'daily' } = req.query as { from?: string; to?: string; groupBy?: 'daily' | 'weekly' | 'monthly' };
 
   const query: any = { tenantId, documentType: 'invoice' };
   if (from || to) {
     query.createdAt = {};
-    if (from) query.createdAt.$gte = from;
-    if (to) query.createdAt.$lte = to;
+    if (from) query.createdAt.$gte = from.includes('T') ? from : `${from}T00:00:00.000Z`;
+    if (to) query.createdAt.$lte = to.includes('T') ? to : `${to}T23:59:59.999Z`;
   }
 
   const sales = await BillModel.find(query);
-  const dailyGroups: Record<string, { date: string, totalSales: number, billCount: number }> = {};
+  const groups: Record<string, { date: string, label: string, totalSales: number, billCount: number }> = {};
 
   sales.forEach(bill => {
-    const date = bill.createdAt.split('T')[0];
-    if (!dailyGroups[date]) {
-      dailyGroups[date] = { date, totalSales: 0, billCount: 0 };
+    const rawDate = new Date(bill.createdAt);
+    if (isNaN(rawDate.getTime())) return;
+
+    let key = '';
+    let label = '';
+
+    if (groupBy === 'monthly') {
+      const year = rawDate.getFullYear();
+      const monthStr = String(rawDate.getMonth() + 1).padStart(2, '0');
+      key = `${year}-${monthStr}`;
+      
+      const localeMonth = rawDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      label = localeMonth;
+    } else if (groupBy === 'weekly') {
+      const day = rawDate.getDay();
+      const diff = rawDate.getDate() - day;
+      const startOfWeek = new Date(rawDate);
+      startOfWeek.setDate(diff);
+      
+      const year = startOfWeek.getFullYear();
+      const monthStr = String(startOfWeek.getMonth() + 1).padStart(2, '0');
+      const dayStr = String(startOfWeek.getDate()).padStart(2, '0');
+      key = `${year}-${monthStr}-${dayStr}`;
+      
+      const localeWeek = startOfWeek.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+      label = `Week of ${localeWeek}`;
+    } else {
+      const year = rawDate.getFullYear();
+      const monthStr = String(rawDate.getMonth() + 1).padStart(2, '0');
+      const dayStr = String(rawDate.getDate()).padStart(2, '0');
+      key = `${year}-${monthStr}-${dayStr}`;
+      
+      label = rawDate.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
     }
-    dailyGroups[date].totalSales += bill.totalAmount;
-    dailyGroups[date].billCount += 1;
+
+    if (!groups[key]) {
+      groups[key] = { date: key, label, totalSales: 0, billCount: 0 };
+    }
+    groups[key].totalSales += bill.totalAmount;
+    groups[key].billCount += 1;
   });
 
-  res.json(Object.values(dailyGroups).sort((a, b) => a.date.localeCompare(b.date)));
+  res.json(Object.values(groups).sort((a, b) => a.date.localeCompare(b.date)));
+});
+
+// Detailed Sold Items & Invoices for a specific Period Key
+router.get('/sales-period-details', async (req: AuthRequest, res) => {
+  try {
+    const { tenantId } = req.user!;
+    const { periodKey, groupBy = 'daily' } = req.query as { periodKey?: string; groupBy?: 'daily' | 'weekly' | 'monthly' };
+
+    if (!periodKey) {
+      return res.status(400).json({ message: 'periodKey is required' });
+    }
+
+    let startStr = '';
+    let endStr = '';
+
+    if (groupBy === 'monthly') {
+      const parts = periodKey.split('-');
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]);
+      if (isNaN(year) || isNaN(month)) {
+        return res.status(400).json({ message: 'Invalid monthly key format' });
+      }
+      startStr = new Date(year, month - 1, 1, 0, 0, 0, 0).toISOString();
+      endStr = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
+    } else if (groupBy === 'weekly') {
+      const parts = periodKey.split('-');
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]);
+      const day = parseInt(parts[2]);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
+        return res.status(400).json({ message: 'Invalid weekly key format' });
+      }
+      startStr = new Date(year, month - 1, day, 0, 0, 0, 0).toISOString();
+      const endDate = new Date(year, month - 1, day + 6, 23, 59, 59, 999);
+      endStr = endDate.toISOString();
+    } else {
+      // daily
+      const parts = periodKey.split('-');
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]);
+      const day = parseInt(parts[2]);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
+        return res.status(400).json({ message: 'Invalid daily key format' });
+      }
+      startStr = new Date(year, month - 1, day, 0, 0, 0, 0).toISOString();
+      endStr = new Date(year, month - 1, day, 23, 59, 59, 999).toISOString();
+    }
+
+    const query: any = {
+      tenantId,
+      documentType: 'invoice',
+      createdAt: { $gte: startStr, $lte: endStr }
+    };
+
+    const periodBills = await BillModel.find(query).sort({ createdAt: 1 });
+
+    const itemGrouping: Record<string, { productId: string; productName: string; totalQty: number; totalRevenue: number; avgPrice: number; billCount: number }> = {};
+
+    periodBills.forEach(bill => {
+      bill.items.forEach(item => {
+        const id = item.productId || 'unknown';
+        if (!itemGrouping[id]) {
+          itemGrouping[id] = {
+            productId: id,
+            productName: item.productName || 'Unknown Product',
+            totalQty: 0,
+            totalRevenue: 0,
+            avgPrice: 0,
+            billCount: 0
+          };
+        }
+        itemGrouping[id].totalQty += item.quantity || 0;
+        itemGrouping[id].totalRevenue += item.lineTotal || 0;
+        itemGrouping[id].billCount += 1;
+      });
+    });
+
+    const itemsSold = Object.values(itemGrouping).map(item => {
+      item.avgPrice = item.totalQty > 0 ? (item.totalRevenue / item.totalQty) : 0;
+      return item;
+    }).sort((a, b) => b.totalQty - a.totalQty);
+
+    const billsList = periodBills.map(b => ({
+      id: b.id,
+      billNumber: b.billNumber,
+      customerName: b.customerName || 'Walk-in',
+      totalAmount: b.totalAmount,
+      paymentStatus: b.paymentStatus,
+      createdAt: b.createdAt
+    }));
+
+    res.json({
+      periodKey,
+      groupBy,
+      startDate: startStr,
+      endDate: endStr,
+      totalSales: periodBills.reduce((sum, b) => sum + b.totalAmount, 0),
+      billCount: periodBills.length,
+      items: itemsSold,
+      bills: billsList
+    });
+  } catch (err: any) {
+    console.error('Error fetching period details:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // Report 2: Top Selling Products

@@ -9,6 +9,7 @@ import {
 } from '../db.js';
 import { nanoid } from 'nanoid';
 import { AuthRequest } from '../middleware/auth.js';
+import { createNotification } from './notification-service.js';
 
 const router = express.Router();
 
@@ -32,6 +33,13 @@ router.post('/supplier', async (req: AuthRequest, res) => {
     tenantId,
     createdAt: new Date().toISOString()
   });
+
+  await createNotification(
+    tenantId,
+    'Supplier Registered',
+    `New supplier "${supplier.name}" has been registered successfully.`,
+    'customer'
+  );
 
   res.json(supplier);
 });
@@ -144,6 +152,13 @@ router.post('/bill/create', async (req: AuthRequest, res) => {
     });
   }
 
+  await createNotification(
+    tenantId,
+    'Purchase Invoice Created',
+    `Purchase Invoice #${newBill.billNumber} from ${newBill.supplierName} for ₹${newBill.totalAmount} has been registered.`,
+    'purchase'
+  );
+
   res.json(newBill);
 });
 
@@ -194,6 +209,13 @@ router.post('/expense', async (req: AuthRequest, res) => {
     referenceId: newExpense.id,
     tenantId
   });
+
+  await createNotification(
+    tenantId,
+    'Expense Recorded',
+    `Recorded an expense of ₹${newExpense.amount} for "${newExpense.title}" under ${newExpense.category}.`,
+    'expense'
+  );
 
   res.json(newExpense);
 });
