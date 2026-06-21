@@ -31,7 +31,7 @@ async function startServer() {
     console.error('Initial database connection failure:', err);
   });
   const app = express();
-  const PORT = 3001;
+  const PORT = 3002;
 
   app.use(cors({
     origin: (origin, callback) => {
