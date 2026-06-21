@@ -43,6 +43,7 @@ import ReturnsAnalyticsPage from './pages/returns/analytics';
 import StaffDirectoryPage from './pages/staff/StaffDirectoryPage';
 import StaffAttendancePage from './pages/staff/StaffAttendancePage';
 import StaffPayrollPage from './pages/staff/StaffPayrollPage';
+import SuperAdminPanel from './pages/superadmin/SuperAdminPanel';
 import { useAuthStore } from './store/useAuthStore';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -103,6 +104,7 @@ export default function App() {
                   <Route path="/staff" element={<StaffDirectoryPage />} />
                   <Route path="/staff/attendance" element={<StaffAttendancePage />} />
                   <Route path="/staff/payroll" element={<StaffPayrollPage />} />
+                  <Route path="/superadmin" element={<SuperAdminPanel />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Routes>
               </Layout>

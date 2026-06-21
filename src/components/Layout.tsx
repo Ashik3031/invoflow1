@@ -127,7 +127,15 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-8 custom-scrollbar">
-          {navGroups.map((group, idx) => (
+          {(user?.role === 'super_admin' ? [
+            {
+              title: 'Super Admin Controls',
+              items: [
+                { to: '/superadmin', icon: Store, label: 'Super Admin Panel' }
+              ]
+            },
+            ...navGroups
+          ] : navGroups).map((group, idx) => (
             <div key={idx}>
               <h2 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3">{group.title}</h2>
               <div className="space-y-1">

@@ -19,6 +19,7 @@ import storeService from './server/services/store-service.js';
 import gstService from './server/services/gst-service.js';
 import notificationService from './server/services/notification-service.js';
 import staffService from './server/services/staff-service.js';
+import superadminService from './server/services/superadmin-service.js';
 import { authenticateToken } from './server/middleware/auth.js';
 import { connectToDatabase } from './server/db.js';
 
@@ -73,6 +74,7 @@ async function startServer() {
   app.use('/api/gst', authenticateToken as any, gstService);
   app.use('/api/notifications', authenticateToken as any, notificationService);
   app.use('/api/staff', authenticateToken as any, staffService);
+  app.use('/api/superadmin', authenticateToken as any, superadminService);
   app.use('/api/backup', authenticateToken as any, backupService);
   app.use('/api/store', storeService);
 

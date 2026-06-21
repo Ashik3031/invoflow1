@@ -33,15 +33,31 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
 
+  // Enforce Tenant Suspension Check for non-super admins
+  const tenant = await TenantModel.findOne({ id: user.tenantId });
+  if (user.role !== 'super_admin' && tenant && tenant.status === 'suspended') {
+    return res.status(403).json({ 
+      message: 'Your business organization has been suspended. Please contact the system administrator.' 
+    });
+  }
+
   const token = jwt.sign(
     { userId: user.id, tenantId: user.tenantId, role: user.role },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
 
-  const tenant = await TenantModel.findOne({ id: user.tenantId });
-
-  res.json({ token, user: { id: user.id, name: user.name, tenantId: user.tenantId }, tenant });
+  res.json({ 
+    token, 
+    user: { 
+      id: user.id, 
+      name: user.name, 
+      tenantId: user.tenantId,
+      role: user.role,
+      email: user.email
+    }, 
+    tenant 
+  });
 });
 
 export default router;

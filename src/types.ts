@@ -2,6 +2,8 @@ export interface User {
   id: string;
   name: string;
   tenantId: string;
+  email?: string;
+  role?: string;
 }
 
 export interface Product {

@@ -26,6 +26,43 @@ export async function connectToDatabase() {
     await mongoose.connect(MONGODB_URI, options);
     isConnected = true;
     console.log('Successfully connected to MongoDB');
+
+    // Auto-seed Super Admin
+    try {
+      const superAdminEmail = 'superadmin@gmail.com';
+      const existingSuperAdmin = await UserModel.findOne({ email: superAdminEmail });
+      if (!existingSuperAdmin) {
+        const bcrypt = await import('bcryptjs');
+        const passwordHash = await bcrypt.default.hash('superadmin123', 10);
+        
+        const tenantId = 'super-admin-tenant';
+        await TenantModel.updateOne(
+          { id: tenantId },
+          { 
+            $setOnInsert: { 
+              id: tenantId, 
+              shopName: 'Super Admin HQ', 
+              slug: 'super-admin', 
+              ownerId: 'super-admin-user',
+              status: 'active'
+            } 
+          },
+          { upsert: true }
+        );
+
+        await UserModel.create({
+          id: 'super-admin-user',
+          name: 'Super Administrator',
+          email: superAdminEmail,
+          passwordHash,
+          tenantId,
+          role: 'super_admin'
+        });
+        console.log('--- DEFAULT SUPER ADMIN SEEDED: superadmin@gmail.com / superadmin123 ---');
+      }
+    } catch (seedErr) {
+      console.error('Error auto-seeding default super admin:', seedErr);
+    }
   } catch (error: any) {
     console.error('--- MONGODB CONNECTION ERROR ---');
     console.error('Message:', error.message);
@@ -48,7 +85,7 @@ export interface User {
   email: string;
   passwordHash: string;
   tenantId: string;
-  role: 'admin' | 'staff';
+  role: 'admin' | 'staff' | 'super_admin';
 }
 
 export interface Tenant {
@@ -60,6 +97,7 @@ export interface Tenant {
   state?: string;
   stateCode?: string;
   businessType?: 'B2B' | 'B2C';
+  status?: 'active' | 'suspended';
 }
 
 export interface Product {
@@ -311,7 +349,7 @@ const UserSchema = new Schema<User>({
   email: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
   tenantId: { type: String, required: true },
-  role: { type: String, enum: ['admin', 'staff'], default: 'admin' }
+  role: { type: String, enum: ['admin', 'staff', 'super_admin'], default: 'admin' }
 });
 
 const TenantSchema = new Schema<Tenant>({
@@ -322,7 +360,8 @@ const TenantSchema = new Schema<Tenant>({
   gstin: String,
   state: String,
   stateCode: String,
-  businessType: { type: String, enum: ['B2B', 'B2C'] }
+  businessType: { type: String, enum: ['B2B', 'B2C'] },
+  status: { type: String, enum: ['active', 'suspended'], default: 'active' }
 });
 
 const ProductSchema = new Schema<Product>({
